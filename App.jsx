@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+// Am adăugat signInWithCustomToken pentru o autentificare mai stabilă în mediu
+import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, collection, query, addDoc, deleteDoc } from 'firebase/firestore';
 import { Plus, Trash2, AlertTriangle, Loader, Zap, Hourglass, MessageSquare, CheckCircle, Tag } from 'lucide-react';
 
 // =========================================================================
-// !!! CONFIGURATIA FIREBASE (DE RETINUT CA FALLBACK) !!!
-// Această configurație a fost furnizată anterior de utilizator.
-// Folosim variabilele globale __firebase_config și __app_id pentru producție.
+// !!! CONFIGURATIA FIREBASE !!!
+// Folosim variabilele globale de configurare ale mediului (mandatory in Canvas).
 // =========================================================================
 const FIREBASE_CONFIG_FALLBACK = { 
   apiKey: "AIzaSyBjGakAvC8G1SiwxkaoJCKKd7d-sRQZeY", 
@@ -19,7 +19,6 @@ const FIREBASE_CONFIG_FALLBACK = {
 }; 
 
 // ID unic pentru a identifica aplicația în baza de date. 
-// Folosim variabila globală __app_id cu un fallback.
 const APP_IDENTIFIER = typeof __app_id !== 'undefined' ? __app_id : 'adrian-simple-crm'; 
 // =========================================================================
 
@@ -49,7 +48,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [uiError, setUiError] = useState(null);
 
-  // Inițializarea Firebase și Autentificarea Anonimă
+  // Inițializarea Firebase și Autentificarea
   useEffect(() => {
     // UTILIZARE MANDATORIE: Obțineți configurația Firebase din variabila globală
     const canvasConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) 
@@ -72,13 +71,20 @@ export default function App() {
 
       const authenticate = async () => {
         try {
-          // Autentificare Anonimă
-          const userCredential = await signInAnonymously(authInstance);
-          setUserId(userCredential.user.uid);
+          const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+          if (authToken) {
+            // METODA 1: Autentificare cu token personalizat (recomandată)
+            const userCredential = await signInWithCustomToken(authInstance, authToken);
+            setUserId(userCredential.user.uid);
+          } else {
+            // METODA 2: Fallback la autentificare anonimă
+            const userCredential = await signInAnonymously(authInstance);
+            setUserId(userCredential.user.uid);
+          }
         } catch (e) {
           console.error("Eroare la autentificare:", e);
-          // Eroare la autentificare (probabil Anonymous Auth dezactivat)
-          setError("Eroare la autentificarea bazei de date. Verificați setările de Firebase Auth (Anonim).");
+          setError("Eroare la autentificarea bazei de date. Verificați setările de Firebase Auth (Token/Anonim).");
         }
         
         setIsAuthReady(true);
@@ -88,7 +94,6 @@ export default function App() {
 
     } catch (e) {
       console.error("Eroare la inițializarea Firebase:", e);
-      // Eroare la inițializare (probabil chei incorecte sau nefuncționale)
       setError("Eroare critică la inițializarea bazei de date. Verifică cheile de configurare.");
       setLoading(false);
     }
@@ -123,6 +128,7 @@ export default function App() {
     }, (e) => {
         console.error("Eroare onSnapshot (permisiuni):", e);
         // Eroare la citirea datelor (probabil Reguli de Securitate incorecte)
+        // NOTĂ: Dacă Autentificarea e OK, dar tot nu merge, problema sunt Regulile Firestore.
         setError("Eroare Permisiuni Firestore. Asigură-te că Regulile de Securitate permit accesul (match /artifacts/{appId}/users/{userId}/...).");
         setLoading(false);
     });
