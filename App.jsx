@@ -5,36 +5,37 @@ import { getFirestore, doc, setDoc, onSnapshot, collection, query, addDoc, delet
 import { Plus, Trash2, AlertTriangle, Loader, Zap, Hourglass, MessageSquare, CheckCircle, Tag } from 'lucide-react';
 
 // =========================================================================
-// !!! CONFIGURATIA FIREBASE (DATE ACTUALIZATE) !!!
-// Aceste date au fost preluate din consola ta Firebase (image_b281a3.png).
+// !!! CONFIGURATIA FIREBASE (DE RETINUT CA FALLBACK) !!!
+// Această configurație a fost furnizată anterior de utilizator.
+// Folosim variabilele globale __firebase_config și __app_id pentru producție.
 // =========================================================================
-const FIREBASE_CONFIG = { 
-  // VERIFICĂ SINTAXA: Toate liniile, ÎN AFARĂ DE ULTIMA, TREBUIE SĂ SE TERMINE CU VIRGULĂ (,)
-  apiKey: "AIzaSyBjGakAvC8G1SiwxkaoJCKKd7d-sRQZeY", // <-- DATELE TALE REALE
-  authDomain: "origin-app-489a4.firebaseapp.com", // <-- DATELE TALE REALE
-  projectId: "origin-app-489a4", // <-- DATELE TALE REALE
-  storageBucket: "origin-app-489a4.firebasestorage.app", // <-- DATELE TALE REALE
-  messagingSenderId: "669338657246", // <-- DATELE TALE REALE
-  appId: "1:669338657246:web:92294f676e1585c787d4f" // <-- ACEASTA ESTE ULTIMA LINIE, NU ARE VIRGULĂ
-}; // <-- ATENȚIE: Acolada de închidere trebuie să fie aici!
+const FIREBASE_CONFIG_FALLBACK = { 
+  apiKey: "AIzaSyBjGakAvC8G1SiwxkaoJCKKd7d-sRQZeY", 
+  authDomain: "origin-app-489a4.firebaseapp.com", 
+  projectId: "origin-app-489a4", 
+  storageBucket: "origin-app-489a4.firebasestorage.app", 
+  messagingSenderId: "669338657246", 
+  appId: "1:669338657246:web:92294f676e1585c787d4f"
+}; 
 
-// ID unic pentru a identifica aplicația în baza de date
-const APP_IDENTIFIER = "adrian-simple-crm"; 
+// ID unic pentru a identifica aplicația în baza de date. 
+// Folosim variabila globală __app_id cu un fallback.
+const APP_IDENTIFIER = typeof __app_id !== 'undefined' ? __app_id : 'adrian-simple-crm'; 
 // =========================================================================
 
 // Etapele (coloanele) Kanban
 const KANBAN_STAGES = [
-  { id: 'new', name: '1. Nou', color: 'border-red-500 bg-red-800/20 text-red-300', icon: AlertTriangle },
-  { id: 'in_progress', name: '2. În Curs', color: 'border-indigo-500 bg-indigo-800/20 text-indigo-300', icon: Hourglass },
-  { id: 'follow_up', name: '3. Follow-up', color: 'border-yellow-500 bg-yellow-800/20 text-yellow-300', icon: MessageSquare },
-  { id: 'closed', name: '4. Închis/Câștigat', color: 'border-green-500 bg-green-800/20 text-green-300', icon: CheckCircle },
+  { id: 'new', name: '1. Nou', color: 'border-red-500 bg-red-100 text-red-700', icon: AlertTriangle },
+  { id: 'in_progress', name: '2. În Curs', color: 'border-indigo-500 bg-indigo-100 text-indigo-700', icon: Hourglass },
+  { id: 'follow_up', name: '3. Follow-up', color: 'border-yellow-500 bg-yellow-100 text-yellow-700', icon: MessageSquare },
+  { id: 'closed', name: '4. Închis/Câștigat', color: 'border-green-500 bg-green-100 text-green-700', icon: CheckCircle },
 ];
 
 // Priorități pentru Deal-uri/Sarcini
 const PRIORITIES = {
     low: { name: 'Scăzută', color: 'text-gray-500' },
-    medium: { name: 'Medie', color: 'text-indigo-400' },
-    high: { name: 'URGENTĂ', color: 'text-red-500' },
+    medium: { name: 'Medie', color: 'text-indigo-600' },
+    high: { name: 'URGENTĂ', color: 'text-red-700' },
 };
 
 export default function App() {
@@ -50,15 +51,20 @@ export default function App() {
 
   // Inițializarea Firebase și Autentificarea Anonimă
   useEffect(() => {
-    // Verifică dacă obiectul de configurare este gol (ca măsură de siguranță)
-    if (!FIREBASE_CONFIG.projectId) {
-        setError("Eroare Critică: Obiectul de configurare FIREBASE_CONFIG nu este definit sau este gol.");
+    // UTILIZARE MANDATORIE: Obțineți configurația Firebase din variabila globală
+    const canvasConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) 
+        ? JSON.parse(__firebase_config) 
+        : FIREBASE_CONFIG_FALLBACK;
+    
+    // Verifică dacă obiectul de configurare este valid
+    if (!canvasConfig || !canvasConfig.projectId) {
+        setError("Eroare Critică: Configurația Firebase este invalidă sau lipsește.");
         setLoading(false);
         return;
     }
     
     try {
-      const app = initializeApp(FIREBASE_CONFIG);
+      const app = initializeApp(canvasConfig);
       const firestore = getFirestore(app);
       const authInstance = getAuth(app);
 
@@ -76,7 +82,6 @@ export default function App() {
         }
         
         setIsAuthReady(true);
-        // SetLoading(false) va fi apelat fie aici, fie după ce onSnapshot returnează date
       };
       
       authenticate();
@@ -97,9 +102,8 @@ export default function App() {
     if (deals.length === 0) setLoading(true); 
     setError(null);
 
-    const appId = APP_IDENTIFIER;
     // Calea colecției: /artifacts/{appId}/users/{userId}/deals
-    const dealsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/deals`);
+    const dealsCollectionRef = collection(db, `artifacts/${APP_IDENTIFIER}/users/${userId}/deals`);
     
     // Ascultă schimbările în colecție
     const unsubscribe = onSnapshot(dealsCollectionRef, (snapshot) => {
@@ -146,8 +150,7 @@ export default function App() {
     }
     setUiError(null);
 
-    const appId = APP_IDENTIFIER;
-    const dealsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/deals`);
+    const dealsCollectionRef = collection(db, `artifacts/${APP_IDENTIFIER}/users/${userId}/deals`);
     
     try {
         setLoading(true);
@@ -170,8 +173,7 @@ export default function App() {
   const updateDealStatus = async (dealId, newStatus) => {
     if (!db || !userId || loading) return;
 
-    const appId = APP_IDENTIFIER;
-    const dealDocRef = doc(db, `artifacts/${appId}/users/${userId}/deals`, dealId);
+    const dealDocRef = doc(db, `artifacts/${APP_IDENTIFIER}/users/${userId}/deals`, dealId);
     
     try {
         setLoading(true);
@@ -190,8 +192,7 @@ export default function App() {
   const deleteDeal = async (dealId) => {
     if (!db || !userId || loading) return;
 
-    const appId = APP_IDENTIFIER;
-    const dealDocRef = doc(db, `artifacts/${appId}/users/${userId}/deals`, dealId);
+    const dealDocRef = doc(db, `artifacts/${APP_IDENTIFIER}/users/${userId}/deals`, dealId);
     
     try {
         setLoading(true);
@@ -208,14 +209,15 @@ export default function App() {
     const priority = PRIORITIES[deal.priority] || PRIORITIES.medium;
 
     return (
-      <div className="bg-gray-700 p-4 rounded-xl shadow-lg border border-gray-600/50 flex flex-col space-y-3">
+      // Schimbăm cardul să fie deschis la culoare
+      <div className="bg-white p-4 rounded-xl shadow-lg border border-gray-200 flex flex-col space-y-3">
         <div className="flex justify-between items-start">
-            <p className={`font-semibold text-lg break-words ${deal.status === 'closed' ? 'line-through text-gray-400' : 'text-white'}`}>
+            <p className={`font-semibold text-lg break-words ${deal.status === 'closed' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
                 {deal.title}
             </p>
             <button
                 onClick={() => deleteDeal(deal.id)}
-                className="p-1 text-gray-500 hover:text-red-500 transition transform hover:scale-110 ml-2 flex-shrink-0"
+                className="p-1 text-gray-400 hover:text-red-500 transition transform hover:scale-110 ml-2 flex-shrink-0"
                 disabled={loading}
                 title="Șterge"
             >
@@ -234,7 +236,7 @@ export default function App() {
         <select
             value={deal.status}
             onChange={(e) => updateDealStatus(deal.id, e.target.value)}
-            className="w-full p-2 text-sm bg-gray-600 border border-gray-500 rounded-lg text-white appearance-none cursor-pointer focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full p-2 text-sm bg-gray-100 border border-gray-300 rounded-lg text-gray-700 appearance-none cursor-pointer focus:ring-indigo-500 focus:border-indigo-500"
             disabled={loading}
         >
             {KANBAN_STAGES.map(stage => (
@@ -249,20 +251,26 @@ export default function App() {
 
   // Interfața de Utilizator (UI)
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col items-center p-4 font-sans">
-      <div className="w-full max-w-7xl">
-        <header className="bg-gray-800 rounded-2xl shadow-2xl p-6 mb-6">
-            <h1 className="text-4xl font-extrabold text-white mb-2 text-center">
-              <Zap className="inline-block mr-2 text-indigo-400" size={32} />
+    // Aplicăm un fundal gradient: 10% azur (albastru deschis) la stânga, 90% alb
+    <div 
+      className="min-h-screen p-4 font-sans"
+      style={{
+        background: 'linear-gradient(to right, #E0F2F7 10%, #FFFFFF 10%, #FFFFFF 100%)', // #E0F2F7 este un albastru deschis (light cyan/azure)
+      }}
+    >
+      <div className="w-full max-w-7xl mx-auto">
+        <header className="bg-white rounded-2xl shadow-xl p-6 mb-6"> {/* Fundal Alb pentru Header */}
+            <h1 className="text-4xl font-extrabold text-gray-800 mb-2 text-center">
+              <Zap className="inline-block mr-2 text-indigo-600" size={32} />
               Simple CRM Board (Adrian)
             </h1>
-            <p className="text-sm text-gray-400 text-center mb-4">
+            <p className="text-sm text-gray-500 text-center mb-4">
               Organizează deal-urile/sarcinile pe etape (Kanban).
             </p>
 
             {/* Mesaje de eroare / încărcare */}
             {(error || uiError) && (
-              <div className="bg-red-900/50 text-red-300 p-3 rounded-xl mb-4 border border-red-700 text-sm flex items-start gap-2">
+              <div className="bg-red-100 text-red-700 p-3 rounded-xl mb-4 border border-red-400 text-sm flex items-start gap-2">
                 <AlertTriangle size={20} className="flex-shrink-0 mt-0.5" />
                 <span className='font-medium'>{error || uiError}</span>
               </div>
@@ -275,19 +283,21 @@ export default function App() {
                 value={newDealTitle}
                 onChange={(e) => setNewDealTitle(e.target.value)}
                 placeholder="Numele Clientului/Titlul Deal-ului..."
-                className="flex-grow p-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                // Schimbăm input-ul la culori deschise
+                className="flex-grow p-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
                 disabled={loading || error}
                 required
               />
               <select
                 value={newDealPriority}
                 onChange={(e) => setNewDealPriority(e.target.value)}
-                className="p-3 bg-gray-700 border border-gray-600 rounded-xl text-white appearance-none cursor-pointer focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition w-full sm:w-40"
+                // Schimbăm selectorul la culori deschise
+                className="p-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-800 appearance-none cursor-pointer focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition w-full sm:w-40"
                 disabled={loading || error}
               >
-                  <option value="high" className="bg-gray-700 text-red-500">URGENTĂ</option>
-                  <option value="medium" className="bg-gray-700 text-indigo-400">Medie</option>
-                  <option value="low" className="bg-gray-700 text-gray-500">Scăzută</option>
+                  <option value="high" className="bg-white text-red-700">URGENTĂ</option>
+                  <option value="medium" className="bg-white text-indigo-600">Medie</option>
+                  <option value="low" className="bg-white text-gray-500">Scăzută</option>
               </select>
               <button
                 type="submit"
@@ -301,7 +311,7 @@ export default function App() {
 
         {/* Ecran de încărcare inițial */}
         {(loading && deals.length === 0 && !error) && (
-            <div className="text-center text-indigo-400 py-16 flex flex-col items-center justify-center gap-4">
+            <div className="text-center text-indigo-600 py-16 flex flex-col items-center justify-center gap-4">
                 <Loader size={40} className="animate-spin" />
                 <p className="font-medium text-xl">Se încarcă board-ul...</p>
             </div>
@@ -313,10 +323,11 @@ export default function App() {
                 {KANBAN_STAGES.map(stage => (
                     <div 
                         key={stage.id} 
-                        className={`p-4 rounded-xl shadow-xl border-t-4 ${stage.color} space-y-4 min-h-[200px]`}
+                        // Am actualizat culorile de fundal și text pentru a fi deschise
+                        className={`p-4 rounded-xl shadow-xl border-t-4 ${stage.color} space-y-4 min-h-[200px] bg-white`}
                     >
-                        <h2 className="text-xl font-bold flex items-center gap-2 mb-3">
-                            <stage.icon size={20} />
+                        <h2 className="text-xl font-bold flex items-center gap-2 mb-3 text-gray-800">
+                            <stage.icon size={20} className="text-indigo-600" />
                             {stage.name} ({dealsByStage[stage.id]?.length || 0})
                         </h2>
 
@@ -325,7 +336,7 @@ export default function App() {
                         ))}
                         
                         {dealsByStage[stage.id].length === 0 && (
-                            <p className="text-center text-gray-600 pt-8 pb-4">Niciun deal în această etapă.</p>
+                            <p className="text-center text-gray-400 pt-8 pb-4">Niciun deal în această etapă.</p>
                         )}
                     </div>
                 ))}
@@ -333,7 +344,7 @@ export default function App() {
         )}
 
         {/* Informații Utilizator pentru debug */}
-        <div className="mt-8 pt-4 border-t border-gray-700 text-center text-xs text-gray-500 w-full max-w-7xl mx-auto">
+        <div className="mt-8 pt-4 border-t border-gray-300 text-center text-xs text-gray-500 w-full max-w-7xl mx-auto">
           <p>ID Utilizator: {userId || 'Se încarcă...'}</p>
           <p>Atenție: Aplicația salvează datele în colecția `/artifacts/{APP_IDENTIFIER}/users/{userId}/deals`.</p>
         </div>
