@@ -8,7 +8,7 @@ import { getFirestore, doc, setDoc, onSnapshot, increment } from 'firebase/fires
 // !!! CONFIGURATIA FIREBASE !!!
 // ATENȚIE: înlocuiește valorile cu cheile tale reale de la Firebase!
 // =========================================================================
-cconst firebaseConfig = {
+const firebaseConfig = {
   apiKey: "AIzaSyBjgakAvC8G1SiwxkaoJCKkd7d-sRgQzeY",
   authDomain: "origin-app-489a4.firebaseapp.com",
   projectId: "origin-app-489a4",
@@ -230,4 +230,5 @@ export default function App() {
     </div>
   );
 }
+
 
