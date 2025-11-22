@@ -5,17 +5,19 @@ import { getFirestore, doc, setDoc, onSnapshot, collection, query, addDoc, delet
 import { Plus, Trash2, AlertTriangle, Loader, Zap, Hourglass, MessageSquare, CheckCircle, Tag } from 'lucide-react';
 
 // =========================================================================
-// !!! CONFIGURATIA FIREBASE !!!
-// ATENȚIE: înlocuiește valorile cu cheile tale reale de la Firebase!
+// !!! CONFIGURATIA FIREBASE (DATE ACTUALIZATE) !!!
+// Aceste date au fost preluate din consola ta Firebase (image_b281a3.png).
 // =========================================================================
-const firebaseConfig = {
-  apiKey: "AIzaSyBjgakAvC8G1SiwxkaoJCKkd7d-sRgQzeY",
-  authDomain: "origin-app-489a4.firebaseapp.com",
-  projectId: "origin-app-489a4",
-  storageBucket: "origin-app-489a4.firebasestorage.app",
-  messagingSenderId: "669338657246",
-  appId: "1:669338657246:web:92294f676e15858c787d4f",
-};
+const FIREBASE_CONFIG = { 
+  // VERIFICĂ SINTAXA: Toate liniile, ÎN AFARĂ DE ULTIMA, TREBUIE SĂ SE TERMINE CU VIRGULĂ (,)
+  apiKey: "AIzaSyBjGakAvC8G1SiwxkaoJCKKd7d-sRQZeY", // <-- DATELE TALE REALE
+  authDomain: "origin-app-489a4.firebaseapp.com", // <-- DATELE TALE REALE
+  projectId: "origin-app-489a4", // <-- DATELE TALE REALE
+  storageBucket: "origin-app-489a4.firebasestorage.app", // <-- DATELE TALE REALE
+  messagingSenderId: "669338657246", // <-- DATELE TALE REALE
+  appId: "1:669338657246:web:92294f676e1585c787d4f" // <-- ACEASTA ESTE ULTIMA LINIE, NU ARE VIRGULĂ
+}; // <-- ATENȚIE: Acolada de închidere trebuie să fie aici!
+
 // ID unic pentru a identifica aplicația în baza de date
 const APP_IDENTIFIER = "adrian-simple-crm"; 
 // =========================================================================
@@ -48,9 +50,9 @@ export default function App() {
 
   // Inițializarea Firebase și Autentificarea Anonimă
   useEffect(() => {
-    // Verifică placeholder-urile
-    if (!FIREBASE_CONFIG.projectId || FIREBASE_CONFIG.apiKey.includes('...')) {
-        setError("!!! EROARE CRITICĂ: Vă rugăm să înlocuiți cheile din FIREBASE_CONFIG în cod cu cele reale de la Firebase. !!!");
+    // Verifică dacă obiectul de configurare este gol (ca măsură de siguranță)
+    if (!FIREBASE_CONFIG.projectId) {
+        setError("Eroare Critică: Obiectul de configurare FIREBASE_CONFIG nu este definit sau este gol.");
         setLoading(false);
         return;
     }
@@ -64,21 +66,24 @@ export default function App() {
 
       const authenticate = async () => {
         try {
+          // Autentificare Anonimă
           const userCredential = await signInAnonymously(authInstance);
           setUserId(userCredential.user.uid);
         } catch (e) {
           console.error("Eroare la autentificare:", e);
+          // Eroare la autentificare (probabil Anonymous Auth dezactivat)
           setError("Eroare la autentificarea bazei de date. Verificați setările de Firebase Auth (Anonim).");
         }
         
         setIsAuthReady(true);
-        setLoading(false);
+        // SetLoading(false) va fi apelat fie aici, fie după ce onSnapshot returnează date
       };
       
       authenticate();
 
     } catch (e) {
       console.error("Eroare la inițializarea Firebase:", e);
+      // Eroare la inițializare (probabil chei incorecte sau nefuncționale)
       setError("Eroare critică la inițializarea bazei de date. Verifică cheile de configurare.");
       setLoading(false);
     }
@@ -86,6 +91,7 @@ export default function App() {
 
   // Ascultarea în timp real a Deal-urilor/Sarcinilor
   useEffect(() => {
+    // NU încerca să te conectezi la Firestore până când autentificarea nu este gata
     if (!isAuthReady || !db || !userId) return;
 
     if (deals.length === 0) setLoading(true); 
@@ -112,7 +118,8 @@ export default function App() {
       setLoading(false);
     }, (e) => {
         console.error("Eroare onSnapshot (permisiuni):", e);
-        setError("Eroare Permisiuni Firestore. Asigură-te că Regulile de Securitate permit accesul.");
+        // Eroare la citirea datelor (probabil Reguli de Securitate incorecte)
+        setError("Eroare Permisiuni Firestore. Asigură-te că Regulile de Securitate permit accesul (match /artifacts/{appId}/users/{userId}/...).");
         setLoading(false);
     });
 
@@ -334,5 +341,3 @@ export default function App() {
     </div>
   );
 }
-
-
