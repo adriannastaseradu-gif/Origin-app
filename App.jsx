@@ -15,9 +15,7 @@ const firebaseConfig = {
   storageBucket: "origin-app-489a4.firebasestorage.app",
   messagingSenderId: "669338657246",
   appId: "1:669338657246:web:92294f676e15858c787d4f",
-  measurementId: "G-F39KQR71L7"
 };
-
 // ID unic pentru a identifica aplicația în baza de date
 const APP_IDENTIFIER = "adrian-simple-crm"; 
 // =========================================================================
@@ -336,4 +334,5 @@ export default function App() {
     </div>
   );
 }
+
 
