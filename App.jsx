@@ -1,44 +1,49 @@
 import React, { useState, useEffect } from 'react';
-import { Zap, AlertTriangle, Plus } from 'lucide-react';
-// Importuri necesare pentru Firebase
+import { Zap, AlertTriangle, Music, Plus, RefreshCw } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, increment } from 'firebase/firestore';
 
 // =========================================================================
-// !!! PAS ESENȚIAL PENTRU VERCEL !!!
-// AICI TREBUIE SĂ PUI CONFIGURAȚIA TA DE LA FIREBASE.
-// PUNE CHEILE TALE REALE AICI!
+// !!! CONFIGURATIA FIREBASE !!!
+// ATENȚIE: înlocuiește valorile cu cheile tale reale de la Firebase!
 // =========================================================================
 const FIREBASE_CONFIG = {
-  // ATENȚIE: înlocuiți valorile cu cheile DVS. reale de la Firebase!
-  apiKey: "AIzaSyBjgakAvC8G1SiwxkaoJCKkd7d-sRgQzeY", 
+  apiKey: "AIzaSyBj...d7d-sRQZeY", 
   authDomain: "origin-app-489a4.firebaseapp.com", 
   projectId: "origin-app-489a4", 
   storageBucket: "origin-app-489a4.firebasestorage.app", 
   messagingSenderId: "669338657246", 
-  appId: "1:669338657246:web:92294f676e15858c787d4f" 
+  appId: "1:669338657246:web:92294f676e1585c787d4f" 
 };
 
-// Un nume unic pentru a identifica aplicația în baza de date
-const APP_IDENTIFIER = "adrian-jd-vance-tracker"; 
+// ID unic pentru a identifica aplicația în baza de date
+const APP_IDENTIFIER = "artiom-plot-song-tracker"; 
+// URL-ul imaginii tale. Am folosit un placeholder.
+// Ar trebui să încarci imaginea 'Artiom_1.jpg' pe un serviciu (ex: Imgur, Google Photos)
+// și să pui URL-ul public aici.
+const BACKGROUND_IMAGE_URL = "https://placehold.co/1080x1920/1a1a2e/ffffff?text=ARTIOM%20+%20PLOT%20(HOST%20IMAGE)";
 // =========================================================================
 
 const MOCK_USER = {
   first_name: "Adrian", // Numele tău
 };
 
+// Functie pentru a obtine data curenta ca string YYYY-MM-DD
+const getTodayDate = () => new Date().toISOString().split('T')[0];
+
 export default function App() {
   const [db, setDb] = useState(null);
   const [userId, setUserId] = useState(null);
-  const [videoCount, setVideoCount] = useState(0);
+  const [songCount, setSongCount] = useState(0);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [currentDate, setCurrentDate] = useState(getTodayDate());
 
   // 1. Inițializarea Firebase și Autentificarea Anonimă
   useEffect(() => {
-    // Verifică dacă user-ul a pus cheile de configurare (pentru a evita erori inutile)
+    // Verifică dacă cheile sunt reale
     if (!FIREBASE_CONFIG.projectId || FIREBASE_CONFIG.apiKey.includes('...')) {
         setError("Eroare Critică: Vă rugăm să înlocuiți cheile din FIREBASE_CONFIG în cod cu cele reale de la Firebase!");
         setLoading(false);
@@ -54,14 +59,12 @@ export default function App() {
 
       const authenticate = async () => {
         try {
-          // Autentificare Anonimă
           await signInAnonymously(authInstance);
         } catch (e) {
           console.error("Eroare la autentificare:", e);
           setError("Eroare la autentificarea bazei de date. Verificați setările de Firebase Auth (Anonim).");
         }
         
-        // Setează ID-ul utilizatorului autentificat.
         setUserId(authInstance.currentUser?.uid || crypto.randomUUID());
         setIsAuthReady(true);
       };
@@ -75,61 +78,62 @@ export default function App() {
     }
   }, []);
 
-  // 2. Ascultarea în timp real a Contorului din Baza de Date (onSnapshot)
+  // 2. Ascultarea în timp real a Contorului (cu resetare zilnică)
   useEffect(() => {
-    // Așteaptă până când Firebase e inițializat și autentificarea e gata
     if (!isAuthReady || !db) return;
 
     setLoading(true);
-    setError(null); // Șterge eroarea de configurare, dacă exista
+    setError(null);
+    setCurrentDate(getTodayDate());
 
     const appId = APP_IDENTIFIER;
-    // Calea unde se salvează contorul: public/data/video_tracker/jd_vance_count
-    const docRef = doc(db, `artifacts/${appId}/public/data/video_tracker`, 'jd_vance_count');
+    // Calea include data curentă (YYYY-MM-DD) ca ID de document.
+    // Aceasta asigură că se folosește un document nou în fiecare zi.
+    const docRef = doc(db, `artifacts/${appId}/public/data/song_tracker`, currentDate);
 
-    // onSnapshot ascultă modificările în timp real
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setVideoCount(data.count || 0);
+        // Verificăm dacă documentul este cu data de azi (deși ID-ul deja asigură asta)
+        if (data.date === currentDate) {
+            setSongCount(data.count || 0);
+        } else {
+            // Dacă din motive excepționale data din document nu corespunde, resetăm.
+            setSongCount(0);
+            setDoc(docRef, { count: 0, date: currentDate, last_updated_by: 'system', timestamp: new Date().toISOString() });
+        }
       } else {
-        // Dacă nu există documentul, îl creăm cu valoarea 0
-        setDoc(docRef, { count: 0, last_updated_by: 'system', timestamp: new Date().toISOString() });
-        setVideoCount(0);
+        // Dacă nu există documentul pentru ziua curentă, îl creăm cu 0.
+        setDoc(docRef, { count: 0, date: currentDate, last_updated_by: 'system', timestamp: new Date().toISOString() });
+        setSongCount(0);
       }
       setLoading(false);
     }, (e) => {
         console.error("Eroare onSnapshot (permisiuni):", e);
-        // Eroare tipică de permisiuni Firebase
         setError("Eroare Permisiuni Firestore. Asigură-te că Regulile de Securitate permit accesul (allow read, write: if request.auth != null;)");
         setLoading(false);
     });
 
-    return () => unsubscribe(); // Cleanup la ieșire din componentă
-  }, [isAuthReady, db]);
+    return () => unsubscribe(); 
+  }, [isAuthReady, db, currentDate]); // Dependența pe currentDate este importantă
 
   // 3. Funcția de Incrementare
   const incrementCount = async () => {
-    // Verifică starea aplicației
-    if (!db || !userId || error) {
-      setError(error || "Aplicația nu este conectată la baza de date.");
-      return;
-    }
-    
-    if (loading) return;
+    if (!db || !userId || error || loading) return;
     
     const appId = APP_IDENTIFIER;
-    const docRef = doc(db, `artifacts/${appId}/public/data/video_tracker`, 'jd_vance_count');
+    const docRef = doc(db, `artifacts/${appId}/public/data/song_tracker`, currentDate);
     
     try {
         setLoading(true);
-        // Folosește increment(1) pentru a crește valoarea atomic
+        // Creștem contorul și actualizăm data
         await setDoc(docRef, {
             count: increment(1),
+            date: currentDate, // Asigură că data e mereu salvată
             last_updated_by: MOCK_USER.first_name || 'Anonim', 
             last_updated_id: userId,
             timestamp: new Date().toISOString()
-        }, { merge: true }); // merge: true păstrează câmpurile existente
+        }, { merge: true });
         setLoading(false);
     } catch (e) {
         console.error("Eroare la incrementare:", e);
@@ -140,49 +144,54 @@ export default function App() {
 
   // 4. Interfața de Utilizator (UI)
   const CounterUI = () => (
-    <div className="flex flex-col items-center h-full w-full pt-16 px-4">
-      <h1 className="text-3xl font-black text-gray-900 mb-2 text-center">Contor Video "JD Vance"</h1>
-      <p className="text-gray-500 text-sm mb-12 text-center">
-        Înregistrează manual video-urile primite de Artiom pe Telegram.
-      </p>
+    <div className="flex flex-col items-center h-full w-full pt-12 px-4 text-white relative z-10">
+      <div className="text-center mb-8 bg-black/50 p-4 rounded-xl backdrop-blur-sm shadow-2xl w-full max-w-md">
+        <h1 className="text-3xl font-black mb-1">Contor Cântec: Плот</h1>
+        <p className="text-sm font-light text-gray-300">
+          Iurii Loza (Înregistrează de câte ori pornește Artiom pe zi)
+        </p>
+      </div>
 
       {/* Mesaj de eroare/încărcare */}
       {error && (
-        <div className="text-red-700 bg-red-100 p-3 rounded-xl border border-red-300 mb-8 w-full max-w-sm text-center font-medium flex items-start gap-2">
+        <div className="text-red-700 bg-red-100 p-3 rounded-xl border border-red-300 mb-8 w-full max-w-sm text-center font-medium flex items-start gap-2 z-20">
           <AlertTriangle size={20} className="mt-0.5 flex-shrink-0" />
           <span className="text-left">{error}</span>
         </div>
       )}
 
       {/* Contorul */}
-      <div className="text-center mb-16">
-        <div className="text-gray-500 text-sm uppercase tracking-wider mb-4 font-semibold">Total Video-uri Înregistrate</div>
-        <div className={`text-8xl font-black text-gray-900 transition-all duration-300 ${loading && !error ? 'opacity-50 blur-sm' : 'opacity-100'}`}>
-          {videoCount.toLocaleString()}
+      <div className="text-center mb-16 bg-black/50 p-6 rounded-3xl backdrop-blur-md shadow-2xl">
+        <div className="text-gray-300 text-xs uppercase tracking-widest mb-2 font-semibold flex items-center justify-center gap-1">
+            <RefreshCw size={12} /> Azi ({currentDate})
         </div>
+        <div className={`text-9xl font-extrabold transition-all duration-300 ${loading && !error ? 'opacity-50 blur-sm' : 'opacity-100'}`}>
+          {songCount.toLocaleString()}
+        </div>
+        <div className="text-gray-300 text-sm mt-2">de start-uri pe ziua de azi</div>
       </div>
 
       {/* Butonul de Incrementare */}
       <button 
         onClick={incrementCount}
         disabled={loading || error}
-        className="w-full max-w-sm p-4 text-white font-bold text-lg rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/50 hover:from-blue-600 hover:to-indigo-700 transition transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
+        className="w-full max-w-sm p-4 text-white font-bold text-lg rounded-2xl bg-gradient-to-r from-green-500 to-emerald-600 shadow-xl shadow-green-500/50 hover:from-green-600 hover:to-emerald-700 transition transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2 z-20"
       >
         {loading && !error ? (
             <>
-                <Zap size={20} className="animate-spin" /> Se înregistrează...
+                <Music size={20} className="animate-spin" /> Se înregistrează...
             </>
         ) : (
             <>
-                <Plus size={24} strokeWidth={3} /> Adaugă +1 Video
+                <Plus size={24} strokeWidth={3} /> Lansați Плот!
             </>
         )}
       </button>
 
       {/* Informații Utilizator */}
-      <div className="mt-8 text-center text-xs text-gray-400">
-        <p>ID Utilizator: {userId || 'Se încarcă...'}</p>
-        <p>Aplicație ID: {APP_IDENTIFIER}</p>
+      <div className="mt-8 text-center text-xs text-gray-400 z-20">
+        <p>ID Sesiune: {userId || 'Se încarcă...'}</p>
+        <p>ID Bază: {APP_IDENTIFIER}</p>
       </div>
     </div>
   );
@@ -190,10 +199,10 @@ export default function App() {
   // Ecran de încărcare inițial
   if (loading && !isAuthReady && !error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-blue-600 flex flex-col items-center">
-          <Zap size={32} className="animate-spin mb-4" />
-          <p className="font-medium">Se inițializează conexiunea...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-emerald-500 flex flex-col items-center">
+          <Music size={32} className="animate-spin mb-4" />
+          <p className="font-medium">Se inițializează contorul zilnic...</p>
         </div>
       </div>
     );
@@ -201,9 +210,22 @@ export default function App() {
 
   // Randare finală
   return (
-    <div className="bg-white min-h-screen font-sans select-none text-gray-800">
+    <div 
+        className="min-h-screen font-sans select-none text-gray-800"
+        style={{
+            backgroundImage: `url('${BACKGROUND_IMAGE_URL}')`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundAttachment: 'fixed',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingBottom: '2rem'
+        }}
+    >
+      {/* Overlay pentru vizibilitate sporită a textului */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-0"></div>
       <CounterUI />
     </div>
   );
 }
-
