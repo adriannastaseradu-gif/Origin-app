@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Zap, AlertTriangle, Music, Plus, RefreshCw } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, increment } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, onSnapshot, collection, query, orderBy, addDoc, deleteDoc } from 'firebase/firestore';
+import { Plus, Trash2, CheckCircle, Circle, AlertTriangle, Loader, Zap } from 'lucide-react'; // CORECTAT: Am adăugat Zap la import
 
 // =========================================================================
 // !!! CONFIGURATIA FIREBASE !!!
@@ -19,32 +19,25 @@ const firebaseConfig = {
 };
 
 // ID unic pentru a identifica aplicația în baza de date
-const APP_IDENTIFIER = "artiom-plot-song-tracker"; 
-// URL-ul imaginii tale. Am folosit un placeholder.
-// Ar trebui să încarci imaginea 'Artiom_1.jpg' pe un serviciu (ex: Imgur, Google Photos)
-// și să pui URL-ul public aici.
-const BACKGROUND_IMAGE_URL = "https://placehold.co/1080x1920/1a1a2e/ffffff?text=ARTIOM%20+%20PLOT%20(HOST%20IMAGE)";
+// Vom folosi acest ID pentru a izola datele în Firestore
+const APP_IDENTIFIER = "adrian-task-manager"; 
 // =========================================================================
-
-const MOCK_USER = {
-  first_name: "Adrian", // Numele tău
-};
-
-// Functie pentru a obtine data curenta ca string YYYY-MM-DD
-const getTodayDate = () => new Date().toISOString().split('T')[0];
 
 export default function App() {
   const [db, setDb] = useState(null);
   const [userId, setUserId] = useState(null);
-  const [songCount, setSongCount] = useState(0);
+  const [tasks, setTasks] = useState([]);
+  const [newTask, setNewTask] = useState('');
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [currentDate, setCurrentDate] = useState(getTodayDate());
+  
+  // Stare pentru a gestiona mesajele de eroare din UI
+  const [uiError, setUiError] = useState(null);
 
   // 1. Inițializarea Firebase și Autentificarea Anonimă
   useEffect(() => {
-    // Verifică dacă cheile sunt reale
+    // Verifică placeholder-urile
     if (!FIREBASE_CONFIG.projectId || FIREBASE_CONFIG.apiKey.includes('...')) {
         setError("Eroare Critică: Vă rugăm să înlocuiți cheile din FIREBASE_CONFIG în cod cu cele reale de la Firebase!");
         setLoading(false);
@@ -60,14 +53,16 @@ export default function App() {
 
       const authenticate = async () => {
         try {
-          await signInAnonymously(authInstance);
+          // Autentificare anonimă
+          const userCredential = await signInAnonymously(authInstance);
+          setUserId(userCredential.user.uid);
         } catch (e) {
           console.error("Eroare la autentificare:", e);
           setError("Eroare la autentificarea bazei de date. Verificați setările de Firebase Auth (Anonim).");
         }
         
-        setUserId(authInstance.currentUser?.uid || crypto.randomUUID());
         setIsAuthReady(true);
+        setLoading(false);
       };
       
       authenticate();
@@ -79,156 +74,210 @@ export default function App() {
     }
   }, []);
 
-  // 2. Ascultarea în timp real a Contorului (cu resetare zilnică)
+  // 2. Ascultarea în timp real a Sarcinii (Tasks)
   useEffect(() => {
-    if (!isAuthReady || !db) return;
+    // Așteaptă până când autentificarea și baza de date sunt gata
+    if (!isAuthReady || !db || !userId) return;
 
     setLoading(true);
     setError(null);
-    setCurrentDate(getTodayDate());
 
     const appId = APP_IDENTIFIER;
-    // Calea include data curentă (YYYY-MM-DD) ca ID de document.
-    // Aceasta asigură că se folosește un document nou în fiecare zi.
-    const docRef = doc(db, `artifacts/${appId}/public/data/song_tracker`, currentDate);
+    // Calea colecției: /artifacts/{appId}/users/{userId}/tasks
+    const tasksCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/tasks`);
+    
+    // ATENȚIE: Nu folosim orderBy() pentru a evita erorile de indexare.
+    // Vom sorta datele direct în React.
 
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        // Verificăm dacă documentul este cu data de azi (deși ID-ul deja asigură asta)
-        if (data.date === currentDate) {
-            setSongCount(data.count || 0);
-        } else {
-            // Dacă din motive excepționale data din document nu corespunde, resetăm.
-            setSongCount(0);
-            setDoc(docRef, { count: 0, date: currentDate, last_updated_by: 'system', timestamp: new Date().toISOString() });
-        }
-      } else {
-        // Dacă nu există documentul pentru ziua curentă, îl creăm cu 0.
-        setDoc(docRef, { count: 0, date: currentDate, last_updated_by: 'system', timestamp: new Date().toISOString() });
-        setSongCount(0);
-      }
+    const unsubscribe = onSnapshot(tasksCollectionRef, (snapshot) => {
+      const fetchedTasks = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      // Sortare locală: sarcini nefinalizate primele, apoi cele finalizate.
+      const sortedTasks = fetchedTasks.sort((a, b) => {
+          if (a.completed === b.completed) return 0;
+          return a.completed ? 1 : -1;
+      });
+
+      setTasks(sortedTasks);
       setLoading(false);
     }, (e) => {
         console.error("Eroare onSnapshot (permisiuni):", e);
-        setError("Eroare Permisiuni Firestore. Asigură-te că Regulile de Securitate permit accesul (allow read, write: if request.auth != null;)");
+        setError("Eroare Permisiuni Firestore. Asigură-te că Regulile de Securitate permit accesul.");
         setLoading(false);
     });
 
     return () => unsubscribe(); 
-  }, [isAuthReady, db, currentDate]); // Dependența pe currentDate este importantă
+  }, [isAuthReady, db, userId]); 
 
-  // 3. Funcția de Incrementare
-  const incrementCount = async () => {
-    if (!db || !userId || error || loading) return;
-    
+  // 3. Adăugarea unei sarcini noi
+  const addTask = async (e) => {
+    e.preventDefault();
+    if (!db || !userId || newTask.trim() === '' || loading) return;
+
+    if (newTask.trim().length > 100) {
+        setUiError("Sarcina este prea lungă (max 100 caractere).");
+        return;
+    }
+    setUiError(null);
+
     const appId = APP_IDENTIFIER;
-    const docRef = doc(db, `artifacts/${appId}/public/data/song_tracker`, currentDate);
+    const tasksCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/tasks`);
     
     try {
         setLoading(true);
-        // Creștem contorul și actualizăm data
-        await setDoc(docRef, {
-            count: increment(1),
-            date: currentDate, // Asigură că data e mereu salvată
-            last_updated_by: MOCK_USER.first_name || 'Anonim', 
-            last_updated_id: userId,
-            timestamp: new Date().toISOString()
-        }, { merge: true });
+        await addDoc(tasksCollectionRef, {
+            text: newTask.trim(),
+            completed: false,
+            createdAt: new Date().toISOString(),
+        });
+        setNewTask(''); // Golește câmpul de intrare
         setLoading(false);
     } catch (e) {
-        console.error("Eroare la incrementare:", e);
-        setError("Eroare la înregistrare. Verifică Regulile de Securitate Firebase!");
+        console.error("Eroare la adăugarea sarcinii:", e);
+        setError("Eroare la salvarea sarcinii. Verifică Regulile de Securitate Firebase!");
         setLoading(false);
     }
   };
 
-  // 4. Interfața de Utilizator (UI)
-  const CounterUI = () => (
-    <div className="flex flex-col items-center h-full w-full pt-12 px-4 text-white relative z-10">
-      <div className="text-center mb-8 bg-black/50 p-4 rounded-xl backdrop-blur-sm shadow-2xl w-full max-w-md">
-        <h1 className="text-3xl font-black mb-1">Contor Cântec: Плот</h1>
-        <p className="text-sm font-light text-gray-300">
-          Iurii Loza (Înregistrează de câte ori pornește Artiom pe zi)
-        </p>
-      </div>
+  // 4. Marcarea sarcinii ca finalizată/nefinalizată
+  const toggleTaskCompletion = async (taskId, currentStatus) => {
+    if (!db || !userId || loading) return;
 
-      {/* Mesaj de eroare/încărcare */}
-      {error && (
-        <div className="text-red-700 bg-red-100 p-3 rounded-xl border border-red-300 mb-8 w-full max-w-sm text-center font-medium flex items-start gap-2 z-20">
-          <AlertTriangle size={20} className="mt-0.5 flex-shrink-0" />
-          <span className="text-left">{error}</span>
-        </div>
-      )}
+    const appId = APP_IDENTIFIER;
+    const taskDocRef = doc(db, `artifacts/${appId}/users/${userId}/tasks`, taskId);
+    
+    try {
+        setLoading(true);
+        await setDoc(taskDocRef, {
+            completed: !currentStatus,
+            completedAt: !currentStatus ? new Date().toISOString() : null,
+        }, { merge: true });
+        setLoading(false);
+    } catch (e) {
+        console.error("Eroare la actualizare:", e);
+        setError("Eroare la actualizarea sarcinii. Verifică Regulile de Securitate!");
+        setLoading(false);
+    }
+  };
 
-      {/* Contorul */}
-      <div className="text-center mb-16 bg-black/50 p-6 rounded-3xl backdrop-blur-md shadow-2xl">
-        <div className="text-gray-300 text-xs uppercase tracking-widest mb-2 font-semibold flex items-center justify-center gap-1">
-            <RefreshCw size={12} /> Azi ({currentDate})
-        </div>
-        <div className={`text-9xl font-extrabold transition-all duration-300 ${loading && !error ? 'opacity-50 blur-sm' : 'opacity-100'}`}>
-          {songCount.toLocaleString()}
-        </div>
-        <div className="text-gray-300 text-sm mt-2">de start-uri pe ziua de azi</div>
-      </div>
+  // 5. Ștergerea unei sarcini
+  const deleteTask = async (taskId) => {
+    if (!db || !userId || loading) return;
 
-      {/* Butonul de Incrementare */}
-      <button 
-        onClick={incrementCount}
-        disabled={loading || error}
-        className="w-full max-w-sm p-4 text-white font-bold text-lg rounded-2xl bg-gradient-to-r from-green-500 to-emerald-600 shadow-xl shadow-green-500/50 hover:from-green-600 hover:to-emerald-700 transition transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2 z-20"
-      >
-        {loading && !error ? (
-            <>
-                <Music size={20} className="animate-spin" /> Se înregistrează...
-            </>
-        ) : (
-            <>
-                <Plus size={24} strokeWidth={3} /> Lansați Плот!
-            </>
-        )}
-      </button>
+    const appId = APP_IDENTIFIER;
+    const taskDocRef = doc(db, `artifacts/${appId}/users/${userId}/tasks`, taskId);
+    
+    try {
+        setLoading(true);
+        await deleteDoc(taskDocRef);
+        setLoading(false);
+    } catch (e) {
+        console.error("Eroare la ștergere:", e);
+        setError("Eroare la ștergerea sarcinii. Verifică Regulile de Securitate!");
+        setLoading(false);
+    }
+  };
 
-      {/* Informații Utilizator */}
-      <div className="mt-8 text-center text-xs text-gray-400 z-20">
-        <p>ID Sesiune: {userId || 'Se încarcă...'}</p>
-        <p>ID Bază: {APP_IDENTIFIER}</p>
-      </div>
-    </div>
-  );
 
-  // Ecran de încărcare inițial
-  if (loading && !isAuthReady && !error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-emerald-500 flex flex-col items-center">
-          <Music size={32} className="animate-spin mb-4" />
-          <p className="font-medium">Se inițializează contorul zilnic...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Randare finală
+  // Interfața de Utilizator (UI)
   return (
-    <div 
-        className="min-h-screen font-sans select-none text-gray-800"
-        style={{
-            backgroundImage: `url('${BACKGROUND_IMAGE_URL}')`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundAttachment: 'fixed',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            paddingBottom: '2rem'
-        }}
-    >
-      {/* Overlay pentru vizibilitate sporită a textului */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-0"></div>
-      <CounterUI />
+    <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4 font-sans">
+      <div className="w-full max-w-lg bg-gray-800 rounded-2xl shadow-2xl p-6 relative">
+        <h1 className="text-3xl font-extrabold text-white mb-2 text-center">
+          <Zap className="inline-block mr-2 text-indigo-400" size={28} />
+          Task Manager (Adrian)
+        </h1>
+        <p className="text-sm text-gray-400 mb-6 text-center">
+          Datele sunt salvate în baza ta de date Firebase.
+        </p>
+
+        {/* Mesaje de eroare / încărcare */}
+        {(error || uiError) && (
+          <div className="bg-red-900/50 text-red-300 p-3 rounded-xl mb-4 border border-red-700 text-sm flex items-start gap-2">
+            <AlertTriangle size={20} className="flex-shrink-0 mt-0.5" />
+            <span className='font-medium'>{error || uiError}</span>
+          </div>
+        )}
+
+        {/* Formular de adăugare sarcină */}
+        <form onSubmit={addTask} className="flex gap-2 mb-6">
+          <input
+            type="text"
+            value={newTask}
+            onChange={(e) => setNewTask(e.target.value)}
+            placeholder="Adaugă o sarcină nouă..."
+            className="flex-grow p-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+            disabled={loading || error}
+            required
+          />
+          <button
+            type="submit"
+            className="p-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-white font-semibold transition shadow-lg shadow-indigo-600/30 disabled:opacity-50"
+            disabled={loading || error || newTask.trim() === ''}
+          >
+            {loading && !error ? <Loader size={20} className="animate-spin" /> : <Plus size={20} />}
+          </button>
+        </form>
+
+        {/* Lista de Sarcini */}
+        <div className="space-y-3">
+          {tasks.length === 0 && !loading && !error && (
+            <p className="text-center text-gray-500 py-8">Nu ai sarcini adăugate încă. Foarte bine!</p>
+          )}
+
+          {tasks.map((task) => (
+            <div
+              key={task.id}
+              className={`flex items-center p-4 rounded-xl shadow-md transition duration-200 ${
+                task.completed ? 'bg-gray-700/50 line-through text-gray-500' : 'bg-gray-700 text-white hover:bg-gray-600'
+              }`}
+            >
+              {/* Buton de finalizare */}
+              <button
+                onClick={() => toggleTaskCompletion(task.id, task.completed)}
+                className="p-1.5 mr-3 flex-shrink-0 transition transform hover:scale-110"
+                disabled={loading}
+              >
+                {task.completed ? (
+                  <CheckCircle size={24} className="text-green-500" />
+                ) : (
+                  <Circle size={24} className="text-indigo-400 hover:text-indigo-300" />
+                )}
+              </button>
+              
+              {/* Textul sarcinii */}
+              <span className="flex-grow text-sm sm:text-base break-words">
+                {task.text}
+              </span>
+
+              {/* Buton de ștergere */}
+              <button
+                onClick={() => deleteTask(task.id)}
+                className="p-1.5 ml-3 flex-shrink-0 text-gray-500 hover:text-red-500 transition transform hover:scale-110"
+                disabled={loading}
+              >
+                <Trash2 size={20} />
+              </button>
+            </div>
+          ))}
+          
+          {/* Indicator de încărcare în timpul operațiunilor */}
+          {loading && !error && tasks.length > 0 && (
+              <div className="text-center text-indigo-400 py-3 flex items-center justify-center gap-2">
+                  <Loader size={20} className="animate-spin" />
+                  Se actualizează...
+              </div>
+          )}
+        </div>
+        
+        {/* Informații Utilizator pentru debug */}
+        <div className="mt-8 pt-4 border-t border-gray-700 text-center text-xs text-gray-500">
+          <p>ID Utilizator: {userId || 'Se încarcă...'}</p>
+        </div>
+      </div>
     </div>
   );
 }
-
-
