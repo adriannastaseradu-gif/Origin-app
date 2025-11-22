@@ -12,12 +12,12 @@ import { getFirestore, doc, setDoc, onSnapshot, increment } from 'firebase/fires
 // =========================================================================
 const FIREBASE_CONFIG = {
   // ATENȚIE: înlocuiți valorile cu cheile DVS. reale de la Firebase!
-  apiKey: "AIzaSyBj...d7d-sRQZeY", 
+  apiKey: "AIzaSyBjgakAvC8G1SiwxkaoJCKkd7d-sRgQzeY", 
   authDomain: "origin-app-489a4.firebaseapp.com", 
   projectId: "origin-app-489a4", 
   storageBucket: "origin-app-489a4.firebasestorage.app", 
   messagingSenderId: "669338657246", 
-  appId: "1:669338657246:web:92294f676e1585c787d4f" 
+  appId: "1:669338657246:web:92294f676e15858c787d4f" 
 };
 
 // Un nume unic pentru a identifica aplicația în baza de date
@@ -206,3 +206,4 @@ export default function App() {
     </div>
   );
 }
+
