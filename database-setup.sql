@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 -- Disable Row Level Security (we're using Telegram auth, not Supabase auth)
 ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
 
--- Create clients table
+-- Create clients table (renamed to projects)
 CREATE TABLE IF NOT EXISTS clients (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name TEXT NOT NULL,
@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS clients (
   company TEXT,
   status TEXT DEFAULT 'lead' CHECK (status IN ('lead', 'prospect', 'customer', 'inactive')),
   notes TEXT,
+  display_order INTEGER DEFAULT 0,
   created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -44,6 +45,26 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Add display_order column to clients table if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM information_schema.columns 
+    WHERE table_name = 'clients' AND column_name = 'display_order'
+  ) THEN
+    ALTER TABLE clients ADD COLUMN display_order INTEGER DEFAULT 0;
+    -- Set initial display_order based on created_at using subquery
+    UPDATE clients 
+    SET display_order = sub.row_num
+    FROM (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY created_at) as row_num
+      FROM clients
+    ) AS sub
+    WHERE clients.id = sub.id;
+  END IF;
+END $$;
+
 -- Migrate existing tasks table if it has contact_id column
 DO $$ 
 BEGIN
@@ -54,6 +75,29 @@ BEGIN
     WHERE table_name = 'tasks' AND column_name = 'contact_id'
   ) THEN
     ALTER TABLE tasks RENAME COLUMN contact_id TO client_id;
+  END IF;
+  
+  -- Drop old foreign key constraint if it exists
+  IF EXISTS (
+    SELECT 1 
+    FROM information_schema.table_constraints 
+    WHERE constraint_name = 'tasks_contact_id_fkey' AND table_name = 'tasks'
+  ) THEN
+    ALTER TABLE tasks DROP CONSTRAINT tasks_contact_id_fkey;
+  END IF;
+END $$;
+
+-- Ensure foreign key constraint exists with correct name
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM information_schema.table_constraints 
+    WHERE constraint_name = 'tasks_client_id_fkey' AND table_name = 'tasks'
+  ) THEN
+    ALTER TABLE tasks 
+    ADD CONSTRAINT tasks_client_id_fkey 
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE;
   END IF;
 END $$;
 
@@ -105,6 +149,7 @@ CREATE TRIGGER update_tasks_updated_at
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_clients_created_by ON clients(created_by);
 CREATE INDEX IF NOT EXISTS idx_clients_status ON clients(status);
+CREATE INDEX IF NOT EXISTS idx_clients_display_order ON clients(display_order);
 
 -- Drop old index if it exists and create new one
 DROP INDEX IF EXISTS idx_tasks_contact_id;
