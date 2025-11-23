@@ -5,23 +5,21 @@ import { supabase } from './supabase';
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState('contacts'); // 'contacts', 'activities', 'dashboard'
-  const [contacts, setContacts] = useState([]);
-  const [activities, setActivities] = useState([]);
+  const [view, setView] = useState('clients'); // 'clients', 'dashboard'
+  const [clients, setClients] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [customStatuses, setCustomStatuses] = useState([]);
   const [filter, setFilter] = useState('all'); // 'all', 'lead', 'prospect', 'customer'
   const [searchTerm, setSearchTerm] = useState('');
-  const [showAddContact, setShowAddContact] = useState(false);
-  const [editingContact, setEditingContact] = useState(null);
-  const [showAddActivity, setShowAddActivity] = useState(false);
+  const [showAddClient, setShowAddClient] = useState(false);
+  const [editingClient, setEditingClient] = useState(null);
   const [showAddTask, setShowAddTask] = useState(false);
   const [showManageStatuses, setShowManageStatuses] = useState(false);
-  const [selectedContact, setSelectedContact] = useState(null);
-  const [expandedContacts, setExpandedContacts] = useState(new Set());
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [expandedClients, setExpandedClients] = useState(new Set());
 
   // Form states
-  const [contactForm, setContactForm] = useState({
+  const [clientForm, setClientForm] = useState({
     name: '',
     email: '',
     phone: '',
@@ -29,18 +27,13 @@ export default function App() {
     status: 'lead',
     notes: ''
   });
-  const [activityForm, setActivityForm] = useState({
-    type: 'note',
-    description: '',
-    contact_id: null
-  });
   const [taskForm, setTaskForm] = useState({
     title: '',
     description: '',
     status: 'pending',
     priority: 'medium',
     due_date: '',
-    contact_id: null
+    client_id: null
   });
   const [newStatusForm, setNewStatusForm] = useState({
     name: '',
@@ -140,59 +133,50 @@ export default function App() {
     if (user) {
       loadData();
       // Set up real-time subscriptions
-      const contactsChannel = supabase
-        .channel('contacts-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => {
-          loadContacts();
+      const clientsChannel = supabase
+        .channel('clients-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, () => {
+          loadClients();
         })
         .subscribe();
 
-      const activitiesChannel = supabase
-        .channel('activities-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, () => {
-          loadActivities();
+      const tasksChannel = supabase
+        .channel('tasks-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+          loadTasks();
+        })
+        .subscribe();
+
+      const statusesChannel = supabase
+        .channel('statuses-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_statuses' }, () => {
+          loadCustomStatuses();
         })
         .subscribe();
 
       return () => {
-        supabase.removeChannel(contactsChannel);
-        supabase.removeChannel(activitiesChannel);
+        supabase.removeChannel(clientsChannel);
+        supabase.removeChannel(tasksChannel);
+        supabase.removeChannel(statusesChannel);
       };
     }
   }, [user]);
 
 
   const loadData = async () => {
-    await Promise.all([loadContacts(), loadActivities(), loadTasks(), loadCustomStatuses()]);
+    await Promise.all([loadClients(), loadTasks(), loadCustomStatuses()]);
   };
 
-  const loadContacts = async () => {
+  const loadClients = async () => {
     const { data, error } = await supabase
-      .from('contacts')
+      .from('clients')
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error loading contacts:', error);
-          } else {
-      setContacts(data || []);
-    }
-  };
-
-  const loadActivities = async () => {
-    const { data, error } = await supabase
-      .from('activities')
-      .select(`
-        *,
-        contacts(name)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (error) {
-      console.error('Error loading activities:', error);
+      console.error('Eroare la încărcarea clienților:', error);
     } else {
-      setActivities(data || []);
+      setClients(data || []);
     }
   };
 
@@ -217,7 +201,7 @@ export default function App() {
 
     if (error) {
       console.error('Error loading custom statuses:', error);
-    } else {
+          } else {
       setCustomStatuses(data || []);
     }
   };
@@ -227,128 +211,108 @@ export default function App() {
     // Clear any stored data if needed
   };
 
-  const handleAddContact = async (e) => {
+  const handleAddClient = async (e) => {
     e.preventDefault();
+    if (!user || !user.id) {
+      alert('Eroare: Utilizatorul nu este autentificat. Te rugăm să reîncarci aplicația.');
+      return;
+    }
+
     const { data, error } = await supabase
-      .from('contacts')
+      .from('clients')
       .insert([{
-        ...contactForm,
+        ...clientForm,
         created_by: user.id
       }])
       .select();
 
     if (error) {
-      alert('Error adding contact: ' + error.message);
+      alert('Eroare la adăugarea clientului: ' + error.message);
     } else {
-      setShowAddContact(false);
-      setContactForm({ name: '', email: '', phone: '', company: '', status: 'lead', notes: '' });
-      loadContacts();
+      setShowAddClient(false);
+      setClientForm({ name: '', email: '', phone: '', company: '', status: 'lead', notes: '' });
+      loadClients();
     }
   };
 
-  const handleUpdateContact = async (e) => {
+  const handleUpdateClient = async (e) => {
     e.preventDefault();
     const { error } = await supabase
-      .from('contacts')
-      .update(contactForm)
-      .eq('id', editingContact.id);
+      .from('clients')
+      .update(clientForm)
+      .eq('id', editingClient.id);
 
     if (error) {
-      alert('Error updating contact: ' + error.message);
+      alert('Eroare la actualizarea clientului: ' + error.message);
     } else {
-      setEditingContact(null);
-      setContactForm({ name: '', email: '', phone: '', company: '', status: 'lead', notes: '' });
-      loadContacts();
+      setEditingClient(null);
+      setClientForm({ name: '', email: '', phone: '', company: '', status: 'lead', notes: '' });
+      loadClients();
     }
   };
 
-  const handleDeleteContact = async (id) => {
-    if (!confirm('Are you sure you want to delete this contact?')) return;
+  const handleDeleteClient = async (id) => {
+    if (!confirm('Ești sigur că vrei să ștergi acest client?')) return;
 
     const { error } = await supabase
-      .from('contacts')
+      .from('clients')
       .delete()
       .eq('id', id);
 
     if (error) {
-      alert('Error deleting contact: ' + error.message);
-    } else {
-      loadContacts();
-    }
-  };
-
-  const handleAddActivity = async (e) => {
-    e.preventDefault();
-    const { error } = await supabase
-      .from('activities')
-      .insert([{
-        ...activityForm,
-        user_id: user.id
-      }]);
-
-    if (error) {
-      alert('Error adding activity: ' + error.message);
+      alert('Eroare la ștergerea clientului: ' + error.message);
       } else {
-      setShowAddActivity(false);
-      setActivityForm({ type: 'note', description: '', contact_id: null });
-      setSelectedContact(null);
-      loadActivities();
-      loadContacts();
+      loadClients();
     }
   };
 
-  const startEditContact = (contact) => {
-    setEditingContact(contact);
-    setContactForm({
-      name: contact.name,
-      email: contact.email || '',
-      phone: contact.phone || '',
-      company: contact.company || '',
-      status: contact.status,
-      notes: contact.notes || ''
+  const startEditClient = (client) => {
+    setEditingClient(client);
+    setClientForm({
+      name: client.name,
+      email: client.email || '',
+      phone: client.phone || '',
+      company: client.company || '',
+      status: client.status,
+      notes: client.notes || ''
     });
   };
 
-  const startAddActivity = (contact) => {
-    setSelectedContact(contact);
-    setActivityForm({
-      type: 'note',
-      description: '',
-      contact_id: contact.id
-    });
-    setShowAddActivity(true);
-  };
-
-  const startAddTask = (contact) => {
-    setSelectedContact(contact);
+  const startAddTask = (client) => {
+    setSelectedClient(client);
     setTaskForm({
       title: '',
       description: '',
       status: customStatuses.length > 0 ? customStatuses[0].name : 'pending',
       priority: 'medium',
       due_date: '',
-      contact_id: contact.id
+      client_id: client.id
     });
     setShowAddTask(true);
   };
 
   const handleAddTask = async (e) => {
     e.preventDefault();
+    if (!user || !user.id) {
+      alert('Eroare: Utilizatorul nu este autentificat.');
+      return;
+    }
+    
     const { error } = await supabase
       .from('tasks')
       .insert([{
         ...taskForm,
-        contact_id: selectedContact.id,
+        client_id: selectedClient.id,
         created_by: user.id,
         due_date: taskForm.due_date || null
       }]);
 
     if (error) {
-      alert('Error adding task: ' + error.message);
+      alert('Eroare la adăugarea sarcinii: ' + error.message);
     } else {
       setShowAddTask(false);
-      setTaskForm({ title: '', description: '', status: 'pending', priority: 'medium', due_date: '', contact_id: null });
-      setSelectedContact(null);
+      setTaskForm({ title: '', description: '', status: 'pending', priority: 'medium', due_date: '', client_id: null });
+      setSelectedClient(null);
       loadTasks();
     }
   };
@@ -367,14 +331,14 @@ export default function App() {
       .eq('id', task.id);
 
     if (error) {
-      alert('Error updating task: ' + error.message);
+      alert('Eroare la actualizarea sarcinii: ' + error.message);
     } else {
       loadTasks();
     }
   };
 
   const handleDeleteTask = async (id) => {
-    if (!confirm('Are you sure you want to delete this task?')) return;
+    if (!confirm('Ești sigur că vrei să ștergi această sarcină?')) return;
 
     const { error } = await supabase
       .from('tasks')
@@ -382,8 +346,8 @@ export default function App() {
       .eq('id', id);
 
     if (error) {
-      alert('Error deleting task: ' + error.message);
-    } else {
+      alert('Eroare la ștergerea sarcinii: ' + error.message);
+      } else {
       loadTasks();
     }
   };
@@ -394,6 +358,11 @@ export default function App() {
 
   const handleAddCustomStatus = async (e) => {
     e.preventDefault();
+    if (!user || !user.id) {
+      alert('Eroare: Utilizatorul nu este autentificat.');
+      return;
+    }
+    
     const { error } = await supabase
       .from('custom_statuses')
       .insert([{
@@ -403,7 +372,7 @@ export default function App() {
       }]);
 
     if (error) {
-      alert('Error adding status: ' + error.message);
+      alert('Eroare la adăugarea statusului: ' + error.message);
     } else {
       setNewStatusForm({ name: '', color: '#6B7280' });
       loadCustomStatuses();
@@ -411,7 +380,7 @@ export default function App() {
   };
 
   const handleDeleteCustomStatus = async (id) => {
-    if (!confirm('Are you sure? Tasks using this status will need to be updated.')) return;
+    if (!confirm('Ești sigur? Sarcinile care folosesc acest status vor trebui actualizate.')) return;
 
     const { error } = await supabase
       .from('custom_statuses')
@@ -419,25 +388,25 @@ export default function App() {
       .eq('id', id);
 
     if (error) {
-      alert('Error deleting status: ' + error.message);
+      alert('Eroare la ștergerea statusului: ' + error.message);
     } else {
       loadCustomStatuses();
     }
   };
 
-  const toggleContactExpansion = (contactId) => {
-    const newExpanded = new Set(expandedContacts);
-    if (newExpanded.has(contactId)) {
-      newExpanded.delete(contactId);
+  const toggleClientExpansion = (clientId) => {
+    const newExpanded = new Set(expandedClients);
+    if (newExpanded.has(clientId)) {
+      newExpanded.delete(clientId);
     } else {
-      newExpanded.add(contactId);
+      newExpanded.add(clientId);
     }
-    setExpandedContacts(newExpanded);
+    setExpandedClients(newExpanded);
   };
 
-  // Get tasks for a contact
-  const getContactTasks = (contactId) => {
-    return tasks.filter(task => task.contact_id === contactId);
+  // Get tasks for a client
+  const getClientTasks = (clientId) => {
+    return tasks.filter(task => task.client_id === clientId);
   };
 
   // Get all available statuses (default + custom)
@@ -451,23 +420,22 @@ export default function App() {
     return [...defaultStatuses, ...customStatuses];
   };
 
-  // Filter contacts
-  const filteredContacts = contacts.filter(contact => {
-    const matchesFilter = filter === 'all' || contact.status === filter;
+  // Filter clients
+  const filteredClients = clients.filter(client => {
+    const matchesFilter = filter === 'all' || client.status === filter;
     const matchesSearch = !searchTerm || 
-      contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (contact.email && contact.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (contact.company && contact.company.toLowerCase().includes(searchTerm.toLowerCase()));
+      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (client.email && client.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (client.company && client.company.toLowerCase().includes(searchTerm.toLowerCase()));
     return matchesFilter && matchesSearch;
   });
 
   // Statistics
   const stats = {
-    totalContacts: contacts.length,
-    leads: contacts.filter(c => c.status === 'lead').length,
-    prospects: contacts.filter(c => c.status === 'prospect').length,
-    customers: contacts.filter(c => c.status === 'customer').length,
-    recentActivities: activities.length
+    totalClients: clients.length,
+    leads: clients.filter(c => c.status === 'lead').length,
+    prospects: clients.filter(c => c.status === 'prospect').length,
+    customers: clients.filter(c => c.status === 'customer').length
   };
 
   if (loading) {
@@ -482,18 +450,18 @@ export default function App() {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="max-w-md w-full text-center">
-          <h1 className="text-3xl font-bold mb-4 text-gray-900">CRM System</h1>
+          <h1 className="text-3xl font-bold mb-4 text-gray-900">Sistem CRM</h1>
           {window.Telegram && window.Telegram.WebApp ? (
             <div>
               <Loader2 className="animate-spin text-blue-600 mx-auto mb-4" size={32} />
-              <p className="text-gray-600">Authenticating with Telegram...</p>
-              <p className="text-sm text-gray-500 mt-2">Please wait while we set up your account.</p>
+              <p className="text-gray-600">Autentificare cu Telegram...</p>
+              <p className="text-sm text-gray-500 mt-2">Te rugăm să aștepți în timp ce configurăm contul tău.</p>
             </div>
           ) : (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-              <p className="text-yellow-800 mb-2">⚠️ This app requires Telegram</p>
+              <p className="text-yellow-800 mb-2">⚠️ Această aplicație necesită Telegram</p>
               <p className="text-sm text-yellow-700">
-                Please open this app from within Telegram to use the CRM system.
+                Te rugăm să deschizi această aplicație din Telegram pentru a folosi sistemul CRM.
               </p>
             </div>
           )}
@@ -507,17 +475,17 @@ export default function App() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-4">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold text-gray-900">CRM System</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Sistem CRM</h1>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-600">
-              {user.first_name || user.telegram_username || `User ${user.telegram_id}`}
+              {user.first_name || user.telegram_username || `Utilizator ${user.telegram_id}`}
             </span>
             <button
               onClick={handleLogout}
               className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
             >
               <LogOut size={16} />
-              Logout
+              Deconectare
             </button>
           </div>
         </div>
@@ -539,26 +507,15 @@ export default function App() {
               Dashboard
             </button>
             <button
-              onClick={() => setView('contacts')}
+              onClick={() => setView('clients')}
               className={`px-4 py-3 text-sm font-medium transition-colors ${
-                view === 'contacts'
+                view === 'clients'
                   ? 'text-blue-600 border-b-2 border-blue-600'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
               <Users size={16} className="inline mr-2" />
-              Contacts ({contacts.length})
-            </button>
-            <button
-              onClick={() => setView('activities')}
-              className={`px-4 py-3 text-sm font-medium transition-colors ${
-                view === 'activities'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <Activity size={16} className="inline mr-2" />
-              Activities ({activities.length})
+              Clienți ({clients.length})
             </button>
           </div>
         </div>
@@ -569,32 +526,32 @@ export default function App() {
         {view === 'dashboard' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div className="bg-white rounded-lg p-6 border border-gray-200">
-              <div className="text-sm text-gray-600 mb-1">Total Contacts</div>
-              <div className="text-3xl font-bold text-gray-900">{stats.totalContacts}</div>
+              <div className="text-sm text-gray-600 mb-1">Total Clienți</div>
+              <div className="text-3xl font-bold text-gray-900">{stats.totalClients}</div>
             </div>
             <div className="bg-white rounded-lg p-6 border border-gray-200">
-              <div className="text-sm text-gray-600 mb-1">Leads</div>
+              <div className="text-sm text-gray-600 mb-1">Lead-uri</div>
               <div className="text-3xl font-bold text-yellow-600">{stats.leads}</div>
             </div>
             <div className="bg-white rounded-lg p-6 border border-gray-200">
-              <div className="text-sm text-gray-600 mb-1">Prospects</div>
+              <div className="text-sm text-gray-600 mb-1">Prospecte</div>
               <div className="text-3xl font-bold text-blue-600">{stats.prospects}</div>
             </div>
             <div className="bg-white rounded-lg p-6 border border-gray-200">
-              <div className="text-sm text-gray-600 mb-1">Customers</div>
+              <div className="text-sm text-gray-600 mb-1">Clienți</div>
               <div className="text-3xl font-bold text-green-600">{stats.customers}</div>
             </div>
         </div>
       )}
 
-        {view === 'contacts' && (
+        {view === 'clients' && (
           <div>
             {/* Search and Filters */}
             <div className="bg-white rounded-lg p-4 mb-4 border border-gray-200">
               <div className="flex flex-col md:flex-row gap-4">
                 <input
                   type="text"
-                  placeholder="Search contacts..."
+                  placeholder="Caută clienți..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
@@ -606,7 +563,7 @@ export default function App() {
                       filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'
                     }`}
                   >
-                    All
+                    Toți
                   </button>
                   <button
                     onClick={() => setFilter('lead')}
@@ -614,7 +571,7 @@ export default function App() {
                       filter === 'lead' ? 'bg-yellow-600 text-white' : 'bg-gray-100 text-gray-700'
                     }`}
                   >
-                    Leads
+                    Lead-uri
                   </button>
                   <button
                     onClick={() => setFilter('prospect')}
@@ -622,7 +579,7 @@ export default function App() {
                       filter === 'prospect' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'
                     }`}
                   >
-                    Prospects
+                    Prospecte
                   </button>
                   <button
                     onClick={() => setFilter('customer')}
@@ -630,115 +587,115 @@ export default function App() {
                       filter === 'customer' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700'
                     }`}
                   >
-                    Customers
+                    Clienți
                   </button>
                 </div>
                 <button
                   onClick={() => setShowManageStatuses(true)}
                   className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
-                  title="Manage Custom Statuses"
+                  title="Gestionează Statusuri Personalizate"
                 >
                   <Flag size={16} />
-                  Statuses
+                  Statusuri
                 </button>
       <button 
-                  onClick={() => setShowAddContact(true)}
+                  onClick={() => setShowAddClient(true)}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
                 >
                   <Plus size={16} />
-                  Add Contact
+                  Adaugă Client
                 </button>
               </div>
             </div>
 
-            {/* Contacts List */}
+            {/* Clients List */}
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              {filteredContacts.length === 0 ? (
+              {filteredClients.length === 0 ? (
                 <div className="p-12 text-center">
                   <Circle size={48} className="text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500">No contacts found</p>
+                  <p className="text-gray-500">Nu s-au găsit clienți</p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-200">
-                  {filteredContacts.map(contact => {
-                    const contactTasks = getContactTasks(contact.id);
-                    const isExpanded = expandedContacts.has(contact.id);
+                  {filteredClients.map(client => {
+                    const clientTasks = getClientTasks(client.id);
+                    const isExpanded = expandedClients.has(client.id);
                     const statuses = getAllStatuses();
                     
                     return (
-                      <div key={contact.id} className="border-b border-gray-200 last:border-0">
+                      <div key={client.id} className="border-b border-gray-200 last:border-0">
                         <div className="p-4 hover:bg-gray-50 transition-colors">
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
                                 <button
-                                  onClick={() => toggleContactExpansion(contact.id)}
+                                  onClick={() => toggleClientExpansion(client.id)}
                                   className="text-gray-400 hover:text-gray-600"
                                 >
                                   {isExpanded ? '▼' : '▶'}
                                 </button>
-                                <h3 className="font-semibold text-gray-900">{contact.name}</h3>
+                                <h3 className="font-semibold text-gray-900">{client.name}</h3>
                                 <span className={`px-2 py-1 text-xs rounded-full ${
-                                  contact.status === 'lead' ? 'bg-yellow-100 text-yellow-800' :
-                                  contact.status === 'prospect' ? 'bg-blue-100 text-blue-800' :
+                                  client.status === 'lead' ? 'bg-yellow-100 text-yellow-800' :
+                                  client.status === 'prospect' ? 'bg-blue-100 text-blue-800' :
                                   'bg-green-100 text-green-800'
                                 }`}>
-                                  {contact.status}
+                                  {client.status}
                                 </span>
-                                {contactTasks.length > 0 && (
+                                {clientTasks.length > 0 && (
                                   <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">
-                                    {contactTasks.length} task{contactTasks.length !== 1 ? 's' : ''}
+                                    {clientTasks.length} task{clientTasks.length !== 1 ? 's' : ''}
                                   </span>
                                 )}
                               </div>
                               <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                                {contact.email && (
+                                {client.email && (
                                   <div className="flex items-center gap-1">
                                     <Mail size={14} />
-                                    {contact.email}
+                                    {client.email}
                                   </div>
                                 )}
-                                {contact.phone && (
+                                {client.phone && (
                                   <div className="flex items-center gap-1">
                                     <Phone size={14} />
-                                    {contact.phone}
+                                    {client.phone}
                                   </div>
                                 )}
-                                {contact.company && (
+                                {client.company && (
                                   <div className="flex items-center gap-1">
                                     <Building size={14} />
-                                    {contact.company}
+                                    {client.company}
                                   </div>
                                 )}
                               </div>
-                              {contact.notes && (
-                                <p className="text-sm text-gray-500 mt-2">{contact.notes}</p>
+                              {client.notes && (
+                                <p className="text-sm text-gray-500 mt-2">{client.notes}</p>
                               )}
                             </div>
                             <div className="flex gap-2">
                               <button
-                                onClick={() => startAddTask(contact)}
+                                onClick={() => startAddTask(client)}
                                 className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
                                 title="Add Task"
                               >
                                 <ListTodo size={18} />
                               </button>
                               <button
-                                onClick={() => startAddActivity(contact)}
+                                onClick={() => (client)}
                                 className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                title="Add Activity"
+                                title=""
                               >
                                 <Activity size={18} />
                               </button>
                               <button
-                                onClick={() => startEditContact(contact)}
+                                onClick={() => startEditClient(client)}
                                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                                 title="Edit"
                               >
                                 <Edit size={18} />
                               </button>
                               <button
-                                onClick={() => handleDeleteContact(contact.id)}
+                                onClick={() => handleDeleteClient(client.id)}
                                 className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                 title="Delete"
                               >
@@ -754,10 +711,10 @@ export default function App() {
                             <div className="flex items-center justify-between mb-3">
                               <h4 className="font-medium text-gray-700 flex items-center gap-2">
                                 <ListTodo size={16} />
-                                Tasks ({contactTasks.length})
+                                Tasks ({clientTasks.length})
                               </h4>
       <button 
-                                onClick={() => startAddTask(contact)}
+                                onClick={() => startAddTask(client)}
                                 className="text-sm text-purple-600 hover:text-purple-700 flex items-center gap-1"
                               >
                                 <Plus size={14} />
@@ -765,11 +722,11 @@ export default function App() {
       </button>
                             </div>
                             
-                            {contactTasks.length === 0 ? (
+                            {clientTasks.length === 0 ? (
                               <p className="text-sm text-gray-500 text-center py-4">No tasks yet. Add one above!</p>
                             ) : (
                               <div className="space-y-2">
-                                {contactTasks.map(task => {
+                                {clientTasks.map(task => {
                                   const status = statuses.find(s => s.name === task.status) || { name: task.status, color: '#6B7280' };
                                   const priorityColors = {
                                     low: 'text-gray-500',
@@ -858,65 +815,26 @@ export default function App() {
           </div>
         )}
 
-        {view === 'activities' && (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            {activities.length === 0 ? (
-              <div className="p-12 text-center">
-                <Activity size={48} className="text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">No activities yet</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-200">
-                {activities.map(activity => (
-                  <div key={activity.id} className="p-4">
-                    <div className="flex items-start gap-3">
-                      <div className={`p-2 rounded-lg ${
-                        activity.type === 'call' ? 'bg-blue-100 text-blue-600' :
-                        activity.type === 'email' ? 'bg-green-100 text-green-600' :
-                        activity.type === 'meeting' ? 'bg-purple-100 text-purple-600' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        <Activity size={16} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium text-gray-900 capitalize">{activity.type}</span>
-                          {activity.contacts && (
-                            <span className="text-sm text-gray-500">• {activity.contacts.name}</span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-700">{activity.description}</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {new Date(activity.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Add Contact Modal */}
-      {showAddContact && (
+      {/* Add Client Modal */}
+      {showAddClient && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Add Contact</h2>
-              <button onClick={() => setShowAddContact(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="text-xl font-semibold">Add Client</h2>
+              <button onClick={() => setShowAddClient(false)} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleAddContact} className="space-y-4">
+            <form onSubmit={handleAddClient} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
                 <input
                   type="text"
                   required
-                  value={contactForm.name}
-                  onChange={(e) => setContactForm({...contactForm, name: e.target.value})}
+                  value={clientForm.name}
+                  onChange={(e) => setClientForm({...clientForm, name: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
               </div>
@@ -924,8 +842,8 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
-                  value={contactForm.email}
-                  onChange={(e) => setContactForm({...contactForm, email: e.target.value})}
+                  value={clientForm.email}
+                  onChange={(e) => setClientForm({...clientForm, email: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
               </div>
@@ -933,8 +851,8 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
                 <input
                   type="tel"
-                  value={contactForm.phone}
-                  onChange={(e) => setContactForm({...contactForm, phone: e.target.value})}
+                  value={clientForm.phone}
+                  onChange={(e) => setClientForm({...clientForm, phone: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
               </div>
@@ -942,16 +860,16 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Company</label>
                 <input
                   type="text"
-                  value={contactForm.company}
-                  onChange={(e) => setContactForm({...contactForm, company: e.target.value})}
+                  value={clientForm.company}
+                  onChange={(e) => setClientForm({...clientForm, company: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                 <select
-                  value={contactForm.status}
-                  onChange={(e) => setContactForm({...contactForm, status: e.target.value})}
+                  value={clientForm.status}
+                  onChange={(e) => setClientForm({...clientForm, status: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 >
                   <option value="lead">Lead</option>
@@ -963,8 +881,8 @@ export default function App() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea
-                  value={contactForm.notes}
-                  onChange={(e) => setContactForm({...contactForm, notes: e.target.value})}
+                  value={clientForm.notes}
+                  onChange={(e) => setClientForm({...clientForm, notes: e.target.value})}
                   rows={3}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
@@ -975,11 +893,11 @@ export default function App() {
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2"
                 >
                   <Save size={16} />
-                  Add Contact
+                  Add Client
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowAddContact(false)}
+                  onClick={() => setShowAddClient(false)}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Cancel
@@ -990,24 +908,24 @@ export default function App() {
         </div>
       )}
 
-      {/* Edit Contact Modal */}
-      {editingContact && (
+      {/* Edit Client Modal */}
+      {editingClient && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Edit Contact</h2>
-              <button onClick={() => setEditingContact(null)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="text-xl font-semibold">Edit Client</h2>
+              <button onClick={() => setEditingClient(null)} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleUpdateContact} className="space-y-4">
+            <form onSubmit={handleUpdateClient} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
                 <input
                   type="text"
                   required
-                  value={contactForm.name}
-                  onChange={(e) => setContactForm({...contactForm, name: e.target.value})}
+                  value={clientForm.name}
+                  onChange={(e) => setClientForm({...clientForm, name: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
               </div>
@@ -1015,8 +933,8 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
-                  value={contactForm.email}
-                  onChange={(e) => setContactForm({...contactForm, email: e.target.value})}
+                  value={clientForm.email}
+                  onChange={(e) => setClientForm({...clientForm, email: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
               </div>
@@ -1024,8 +942,8 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
                 <input
                   type="tel"
-                  value={contactForm.phone}
-                  onChange={(e) => setContactForm({...contactForm, phone: e.target.value})}
+                  value={clientForm.phone}
+                  onChange={(e) => setClientForm({...clientForm, phone: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
               </div>
@@ -1033,16 +951,16 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Company</label>
                 <input
                   type="text"
-                  value={contactForm.company}
-                  onChange={(e) => setContactForm({...contactForm, company: e.target.value})}
+                  value={clientForm.company}
+                  onChange={(e) => setClientForm({...clientForm, company: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                 <select
-                  value={contactForm.status}
-                  onChange={(e) => setContactForm({...contactForm, status: e.target.value})}
+                  value={clientForm.status}
+                  onChange={(e) => setClientForm({...clientForm, status: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 >
                   <option value="lead">Lead</option>
@@ -1054,8 +972,8 @@ export default function App() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea
-                  value={contactForm.notes}
-                  onChange={(e) => setContactForm({...contactForm, notes: e.target.value})}
+                  value={clientForm.notes}
+                  onChange={(e) => setClientForm({...clientForm, notes: e.target.value})}
                   rows={3}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
@@ -1070,7 +988,7 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEditingContact(null)}
+                  onClick={() => setEditingClient(null)}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Cancel
@@ -1081,42 +999,74 @@ export default function App() {
         </div>
       )}
 
-      {/* Add Activity Modal */}
-      {showAddActivity && (
+      {/* Add Client Modal */}
+      {showAddClient && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Add Activity</h2>
-              <button onClick={() => setShowAddActivity(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="text-xl font-semibold">Adaugă Client</h2>
+              <button onClick={() => setShowAddClient(false)} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
             </div>
-            {selectedContact && (
-              <p className="text-sm text-gray-600 mb-4">For: <strong>{selectedContact.name}</strong></p>
-            )}
-            <form onSubmit={handleAddActivity} className="space-y-4">
+            <form onSubmit={handleAddClient} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nume *</label>
+                <input
+                  type="text"
+                  required
+                  value={clientForm.name}
+                  onChange={(e) => setClientForm({...clientForm, name: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={clientForm.email}
+                  onChange={(e) => setClientForm({...clientForm, email: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
+                <input
+                  type="tel"
+                  value={clientForm.phone}
+                  onChange={(e) => setClientForm({...clientForm, phone: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Companie</label>
+                <input
+                  type="text"
+                  value={clientForm.company}
+                  onChange={(e) => setClientForm({...clientForm, company: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                 <select
-                  value={activityForm.type}
-                  onChange={(e) => setActivityForm({...activityForm, type: e.target.value})}
+                  value={clientForm.status}
+                  onChange={(e) => setClientForm({...clientForm, status: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 >
-                  <option value="note">Note</option>
-                  <option value="call">Call</option>
-                  <option value="email">Email</option>
-                  <option value="meeting">Meeting</option>
+                  <option value="lead">Lead</option>
+                  <option value="prospect">Prospect</option>
+                  <option value="customer">Client</option>
+                  <option value="inactive">Inactiv</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
                 <textarea
-                  required
-                  value={activityForm.description}
-                  onChange={(e) => setActivityForm({...activityForm, description: e.target.value})}
-                  rows={4}
+                  value={clientForm.notes}
+                  onChange={(e) => setClientForm({...clientForm, notes: e.target.value})}
+                  rows={3}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
-                  placeholder="What happened?"
                 />
               </div>
               <div className="flex gap-2">
@@ -1125,14 +1075,14 @@ export default function App() {
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2"
                 >
                   <Save size={16} />
-                  Add Activity
+                  Adaugă Client
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowAddActivity(false)}
+                  onClick={() => setShowAddClient(false)}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
-                  Cancel
+                  Anulează
                 </button>
               </div>
             </form>
@@ -1150,8 +1100,8 @@ export default function App() {
                 <X size={20} />
               </button>
             </div>
-            {selectedContact && (
-              <p className="text-sm text-gray-600 mb-4">For: <strong>{selectedContact.name}</strong></p>
+            {selectedClient && (
+              <p className="text-sm text-gray-600 mb-4">For: <strong>{selectedClient.name}</strong></p>
             )}
             <form onSubmit={handleAddTask} className="space-y-4">
               <div>
