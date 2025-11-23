@@ -82,9 +82,11 @@ export default function App() {
     const unsubscribe = onSnapshot(
       tasksQuery,
       (snapshot) => {
+        console.log('Firestore snapshot received. Size:', snapshot.size, 'userId:', userId);
         const tasksData = [];
         snapshot.forEach((doc) => {
           const data = doc.data();
+          console.log('Task found:', doc.id, data);
           tasksData.push({
             id: doc.id,
             ...data,
@@ -93,6 +95,7 @@ export default function App() {
         });
         // Sort by createdAt descending (newest first) in case orderBy didn't work
         tasksData.sort((a, b) => b.createdAt - a.createdAt);
+        console.log('Total tasks loaded:', tasksData.length);
         setTasks(tasksData);
         setLoading(false);
       },
@@ -130,13 +133,24 @@ export default function App() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
-      console.log('Adding task with userId:', userId);
+      console.log('Adding task with userId:', userId, 'taskData:', taskData);
       const docRef = await addDoc(collection(db, 'tasks'), taskData);
-      console.log('Task added successfully with ID:', docRef.id);
+      console.log('✅ Task added successfully! ID:', docRef.id);
+      console.log('Task saved to Firestore collection: tasks');
       setNewTask('');
     } catch (error) {
-      console.error('Error adding task:', error);
-      setError(`Failed to add task: ${error.message}. Please try again.`);
+      console.error('❌ Error adding task:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      
+      // Check for permission errors
+      if (error.code === 'permission-denied') {
+        setError('⚠️ Permission denied! Update Firestore Rules. See FIRESTORE_RULES_FIX.md');
+      } else if (error.code === 'unavailable') {
+        setError('⚠️ Firestore unavailable. Check your internet connection.');
+      } else {
+        setError(`Failed to add task: ${error.message}. Check console for details.`);
+      }
     }
   };
 
@@ -203,6 +217,11 @@ export default function App() {
         <p className="text-sm text-gray-500 text-center mt-1">
           {activeCount} active, {completedCount} completed
         </p>
+        {userId && (
+          <p className="text-xs text-gray-400 text-center mt-1">
+            User ID: {userId.substring(0, 20)}...
+          </p>
+        )}
         {error && (
           <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm text-center">
             {error}
