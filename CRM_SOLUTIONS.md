@@ -134,3 +134,4 @@ activities
 
 Would you like me to start building this CRM with Supabase?
 
+

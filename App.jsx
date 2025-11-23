@@ -24,7 +24,6 @@ export default function App() {
   // Form states
   const [clientForm, setClientForm] = useState({
     name: '',
-    email: '',
     phone: '',
     company: '',
     notes: '',
@@ -148,8 +147,6 @@ export default function App() {
   // Load data when user is logged in
   useEffect(() => {
     if (user) {
-      initializeDefaultStatuses();
-      initializeDefaultClientStatuses();
       loadData();
       // Set up real-time subscriptions
       const clientsChannel = supabase
@@ -314,7 +311,7 @@ export default function App() {
       alert('Eroare la adăugarea clientului: ' + error.message);
       } else {
       setShowAddClient(false);
-      setClientForm({ name: '', email: '', phone: '', company: '', notes: '', status: '' });
+      setClientForm({ name: '', phone: '', company: '', notes: '', status: '' });
       loadClients();
     }
   };
@@ -330,7 +327,7 @@ export default function App() {
       alert('Eroare la actualizarea clientului: ' + error.message);
     } else {
       setEditingClient(null);
-      setClientForm({ name: '', email: '', phone: '', company: '', notes: '', status: '' });
+      setClientForm({ name: '', phone: '', company: '', notes: '', status: '' });
       loadClients();
     }
   };
@@ -354,7 +351,6 @@ export default function App() {
     setEditingClient(client);
     setClientForm({
       name: client.name,
-      email: client.email || '',
       phone: client.phone || '',
       company: client.company || '',
       notes: client.notes || '',
@@ -750,137 +746,25 @@ export default function App() {
     return customStatuses;
   };
 
-  // Initialize default client statuses if they don't exist
-  const initializeDefaultClientStatuses = async () => {
-    if (!user || !user.id) return;
-
-    const defaultClientStatuses = [
-      { name: 'Lead', color: '#3B82F6' },
-      { name: 'Prospect', color: '#F59E0B' },
-      { name: 'Client', color: '#10B981' },
-      { name: 'Inactiv', color: '#6B7280' }
-    ];
-
-    for (const status of defaultClientStatuses) {
-      // Check if status already exists
-      const { data: existing } = await supabase
-        .from('client_statuses')
-        .select('id')
-        .eq('name', status.name)
-        .eq('created_by', user.id)
-        .single();
-
-      if (!existing) {
-        // Check if profile exists
-        const { data: existingProfile } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', user.id)
-          .single();
-        
-        const statusData = {
-          name: status.name,
-          color: status.color
-        };
-        
-        if (existingProfile) {
-          statusData.created_by = user.id;
-        } else {
-          // Try to create profile if it doesn't exist
-          const { error: createError } = await supabase
-            .from('profiles')
-            .insert([{
-              id: user.id,
-              telegram_id: user.telegram_id || 0,
-              telegram_username: user.telegram_username || null,
-              first_name: user.first_name || null,
-              last_name: user.last_name || null
-            }]);
-          
-          if (!createError) {
-            statusData.created_by = user.id;
-          }
-        }
-        
-        await supabase
-          .from('client_statuses')
-          .insert([statusData]);
-      }
-    }
-
-    loadClientStatuses();
-  };
-
-  // Initialize default statuses if they don't exist
-  const initializeDefaultStatuses = async () => {
-    if (!user || !user.id) return;
-
-    const defaultStatuses = [
-      { name: 'pending', color: '#F59E0B' },
-      { name: 'in-progress', color: '#3B82F6' },
-      { name: 'completed', color: '#10B981' },
-      { name: 'cancelled', color: '#EF4444' }
-    ];
-
-    for (const status of defaultStatuses) {
-      // Check if status already exists
-      const { data: existing } = await supabase
-        .from('custom_statuses')
-        .select('id')
-        .eq('name', status.name)
-        .eq('created_by', user.id)
-        .single();
-
-      if (!existing) {
-        // Check if profile exists
-        const { data: existingProfile } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', user.id)
-          .single();
-        
-        const statusData = {
-          name: status.name,
-          color: status.color
-        };
-        
-        if (existingProfile) {
-          statusData.created_by = user.id;
-        } else {
-          // Try to create profile if it doesn't exist
-          const { error: createError } = await supabase
-            .from('profiles')
-            .insert([{
-              id: user.id,
-              telegram_id: user.telegram_id || 0,
-              telegram_username: user.telegram_username || null,
-              first_name: user.first_name || null,
-              last_name: user.last_name || null
-            }]);
-          
-          if (!createError) {
-            statusData.created_by = user.id;
-          }
-        }
-        
-        await supabase
-          .from('custom_statuses')
-          .insert([statusData]);
-      }
-    }
-
-    loadCustomStatuses();
-  };
 
   // Filter clients
   const filteredClients = clients.filter(client => {
     const matchesSearch = !searchTerm || 
       client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (client.email && client.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (client.company && client.company.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStatus = statusFilter === 'all' || !statusFilter || client.status === statusFilter || (!client.status && statusFilter === 'none');
     return matchesSearch && matchesStatus;
   });
+
+  // Group clients by status
+  const groupedClients = filteredClients.reduce((acc, client) => {
+    const status = client.status || 'Fără Status';
+    if (!acc[status]) {
+      acc[status] = [];
+    }
+    acc[status].push(client);
+    return acc;
+  }, {});
 
   const handleDragStart = (e, client) => {
     setDraggedClient(client);
@@ -1080,8 +964,22 @@ export default function App() {
                   <p className="text-gray-500">Nu s-au găsit proiecte</p>
       </div>
               ) : (
-                <div className="divide-y divide-gray-200">
-                  {filteredClients.map(client => {
+                <div>
+                  {Object.entries(groupedClients).map(([status, statusClients]) => {
+                    const statusInfo = status === 'Fără Status' ? null : clientStatuses.find(s => s.name === status);
+                    return (
+                      <div key={status} className="mb-6">
+                        <div className="px-4 py-2 bg-gray-100 border-b border-gray-200">
+                          <div className="flex items-center gap-2">
+                            {statusInfo && (
+                              <div className="w-4 h-4 rounded-xl" style={{ backgroundColor: statusInfo.color }}></div>
+                            )}
+                            <h3 className="font-semibold text-gray-700">{status}</h3>
+                            <span className="text-sm text-gray-500">({statusClients.length})</span>
+    </div>
+                        </div>
+                        <div className="divide-y divide-gray-200">
+                          {statusClients.map(client => {
                     const clientTasks = getClientTasks(client.id);
                     const isExpanded = expandedClients.has(client.id);
                     const statuses = getAllStatuses();
@@ -1129,12 +1027,6 @@ export default function App() {
                                 )}
     </div>
                               <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                                {client.email && (
-                                  <div className="flex items-center gap-1">
-                                    <Mail size={14} />
-                                    {client.email}
-                                  </div>
-                                )}
                                 {client.phone && (
                                   <div className="flex items-center gap-1">
                                     <Phone size={14} />
@@ -1289,6 +1181,10 @@ export default function App() {
                         )}
                       </div>
                     );
+                          })}
+                        </div>
+                      </div>
+                    );
                   })}
                 </div>
               )}
@@ -1316,15 +1212,6 @@ export default function App() {
                   required
                   value={clientForm.name}
                   onChange={(e) => setClientForm({...clientForm, name: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={clientForm.email}
-                  onChange={(e) => setClientForm({...clientForm, email: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
               </div>
@@ -1411,15 +1298,6 @@ export default function App() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={clientForm.email}
-                  onChange={(e) => setClientForm({...clientForm, email: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
-                />
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
                 <input
                   type="tel"
@@ -1501,16 +1379,6 @@ export default function App() {
                   onKeyDown={(e) => e.stopPropagation()}
                   className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                   autoFocus
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={clientForm.email}
-                  onChange={(e) => setClientForm({...clientForm, email: e.target.value})}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
               <div>
@@ -1670,6 +1538,10 @@ export default function App() {
             
             {!editingClientStatus ? (
               <>
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                  <p className="text-sm text-blue-800 font-medium">📋 Statusuri pentru Clienți</p>
+                  <p className="text-xs text-blue-600 mt-1">Aceste statusuri se aplică doar clienților din secțiunea Proiecte.</p>
+                </div>
                 <div className="mb-6">
                   <h3 className="text-sm font-medium text-gray-700 mb-3">Adaugă Status Nou</h3>
                   <form onSubmit={handleAddClientStatus} className="space-y-3">
@@ -1811,6 +1683,10 @@ export default function App() {
             
             {!editingStatus ? (
               <>
+                <div className="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+                  <p className="text-sm text-indigo-800 font-medium">📝 Statusuri pentru Sarcini</p>
+                  <p className="text-xs text-indigo-600 mt-1">Aceste statusuri se aplică doar sarcinilor (task-urilor) din fiecare client.</p>
+                </div>
                 <div className="mb-6">
                   <h3 className="text-sm font-medium text-gray-700 mb-3">Adaugă Status Nou</h3>
                   <form onSubmit={handleAddCustomStatus} className="space-y-3">
