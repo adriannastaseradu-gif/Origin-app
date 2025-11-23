@@ -162,10 +162,12 @@ export default function App() {
       }
       
       // List of all possible default status names (normalized to lowercase for comparison)
+      // Include all variations with different diacritics
       const defaultStatusNamesLower = [
         'completed', 'pending', 'in-progress', 'cancelled',
         'în așteptare', 'în proces', 'finalizat', 'anulat',
-        'în aşteptare' // variant with different diacritic
+        'în aşteptare', // variant with different diacritic (ș vs ş)
+        'in asteptare', 'in proces' // without diacritics
       ];
       
       // Find all statuses that match default names (case-insensitive)
@@ -186,19 +188,23 @@ export default function App() {
       
       // Delete all matching statuses in one batch
       if (statusesToDelete.length > 0) {
-        const { error: deleteError } = await supabase
-          .from('custom_statuses')
-          .delete()
-          .in('id', statusesToDelete);
-        
-        if (deleteError) {
-          console.error('Error deleting default statuses:', deleteError);
-          alert('Eroare la ștergerea statusurilor implicite: ' + deleteError.message);
-        } else {
-          console.log(`Deleted ${statusesToDelete.length} default status(es)`);
-          // Reload statuses after deletion
-          await loadCustomStatuses();
+        // Delete each status individually to ensure they're all removed
+        for (const statusId of statusesToDelete) {
+          const { error: deleteError } = await supabase
+            .from('custom_statuses')
+            .delete()
+            .eq('id', statusId);
+          
+          if (deleteError) {
+            console.error(`Error deleting status ${statusId}:`, deleteError);
+          }
         }
+        
+        console.log(`Deleted ${statusesToDelete.length} default status(es)`);
+        // Wait a bit before reloading to ensure deletion is complete
+        setTimeout(() => {
+          loadCustomStatuses();
+        }, 500);
       }
     } catch (error) {
       console.error('Error in deleteDefaultTaskStatuses:', error);
@@ -353,8 +359,26 @@ export default function App() {
 
     if (error) {
       console.error('Error loading custom statuses:', error);
-          } else {
-      setCustomStatuses(data || []);
+    } else {
+      // Filter out default statuses before setting state
+      const defaultStatusNamesLower = [
+        'completed', 'pending', 'in-progress', 'cancelled',
+        'în așteptare', 'în proces', 'finalizat', 'anulat',
+        'în aşteptare', 'in asteptare', 'in proces'
+      ];
+      
+      const filteredStatuses = (data || []).filter(status => {
+        if (!status.name) return false;
+        const statusNameLower = status.name.toLowerCase().trim();
+        return !defaultStatusNamesLower.includes(statusNameLower);
+      });
+      
+      setCustomStatuses(filteredStatuses);
+      
+      // Also delete them from database in background
+      if (data && data.length > filteredStatuses.length) {
+        deleteDefaultTaskStatuses();
+      }
     }
   };
 
@@ -369,7 +393,7 @@ export default function App() {
       alert('Eroare: Utilizatorul nu este autentificat. Te rugăm să reîncarci aplicația.');
       return;
     }
-
+    
     const { data, error } = await supabase
       .from('clients')
       .insert([{
