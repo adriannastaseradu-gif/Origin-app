@@ -24,7 +24,6 @@ export default function App() {
     email: '',
     phone: '',
     company: '',
-    status: 'lead',
     notes: ''
   });
   const [taskForm, setTaskForm] = useState({
@@ -182,7 +181,7 @@ export default function App() {
 
     if (error) {
       console.error('Eroare la încărcarea proiectelor:', error);
-    } else {
+          } else {
       setClients(data || []);
     }
   };
@@ -278,9 +277,9 @@ export default function App() {
 
     if (error) {
       alert('Eroare la adăugarea clientului: ' + error.message);
-    } else {
+      } else {
       setShowAddClient(false);
-      setClientForm({ name: '', email: '', phone: '', company: '', status: 'lead', notes: '' });
+      setClientForm({ name: '', email: '', phone: '', company: '', notes: '' });
       loadClients();
     }
   };
@@ -296,7 +295,7 @@ export default function App() {
       alert('Eroare la actualizarea clientului: ' + error.message);
     } else {
       setEditingClient(null);
-      setClientForm({ name: '', email: '', phone: '', company: '', status: 'lead', notes: '' });
+      setClientForm({ name: '', email: '', phone: '', company: '', notes: '' });
       loadClients();
     }
   };
@@ -323,7 +322,6 @@ export default function App() {
       email: client.email || '',
       phone: client.phone || '',
       company: client.company || '',
-      status: client.status,
       notes: client.notes || ''
     });
   };
@@ -680,10 +678,7 @@ export default function App() {
 
   // Statistics
   const stats = {
-    totalClients: clients.length,
-    leads: clients.filter(c => c.status === 'lead').length,
-    prospects: clients.filter(c => c.status === 'prospect').length,
-    customers: clients.filter(c => c.status === 'customer').length
+    totalClients: clients.length
   };
 
   if (loading) {
@@ -711,8 +706,8 @@ export default function App() {
               <p className="text-sm text-yellow-700">
                 Te rugăm să deschizi această aplicație din Telegram pentru a folosi sistemul CRM.
               </p>
-            </div>
-          )}
+        </div>
+      )}
         </div>
       </div>
     );
@@ -743,7 +738,7 @@ export default function App() {
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex gap-1">
-            <button
+      <button 
               onClick={() => setView('dashboard')}
               className={`px-4 py-3 text-sm font-medium transition-colors ${
                 view === 'dashboard'
@@ -774,20 +769,8 @@ export default function App() {
         {view === 'dashboard' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div className="bg-white rounded-lg p-6 border border-gray-200">
-              <div className="text-sm text-gray-600 mb-1">Total Clienți</div>
+              <div className="text-sm text-gray-600 mb-1">Total Proiecte</div>
               <div className="text-3xl font-bold text-gray-900">{stats.totalClients}</div>
-            </div>
-            <div className="bg-white rounded-lg p-6 border border-gray-200">
-              <div className="text-sm text-gray-600 mb-1">Lead-uri</div>
-              <div className="text-3xl font-bold text-yellow-600">{stats.leads}</div>
-            </div>
-            <div className="bg-white rounded-lg p-6 border border-gray-200">
-              <div className="text-sm text-gray-600 mb-1">Prospecte</div>
-              <div className="text-3xl font-bold text-blue-600">{stats.prospects}</div>
-            </div>
-            <div className="bg-white rounded-lg p-6 border border-gray-200">
-              <div className="text-sm text-gray-600 mb-1">Clienți</div>
-              <div className="text-3xl font-bold text-green-600">{stats.customers}</div>
             </div>
         </div>
       )}
@@ -811,7 +794,7 @@ export default function App() {
                 >
                   <Flag size={16} className="rounded-xl" />
                   Statusuri
-                </button>
+      </button>
       <button 
                   onClick={() => setShowAddClient(true)}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl flex items-center gap-2"
@@ -828,7 +811,7 @@ export default function App() {
                 <div className="p-12 text-center">
                   <Circle size={48} className="text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-500">Nu s-au găsit proiecte</p>
-                </div>
+      </div>
               ) : (
                 <div className="divide-y divide-gray-200">
                   {filteredClients.map(client => {
@@ -857,19 +840,12 @@ export default function App() {
                                   {isExpanded ? '▼' : '▶'}
                                 </button>
                                 <h3 className="font-semibold text-gray-900">{client.name}</h3>
-                                <span className={`px-2 py-1 text-xs rounded-xl ${
-                                  client.status === 'lead' ? 'bg-yellow-100 text-yellow-800' :
-                                  client.status === 'prospect' ? 'bg-blue-100 text-blue-800' :
-                                  'bg-green-100 text-green-800'
-                                }`}>
-                                  {client.status}
-                                </span>
                                 {clientTasks.length > 0 && (
                                   <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-xl">
                                     {clientTasks.length} task{clientTasks.length !== 1 ? 's' : ''}
                                   </span>
                                 )}
-                              </div>
+    </div>
                               <div className="flex flex-wrap gap-4 text-sm text-gray-600">
                                 {client.email && (
                                   <div className="flex items-center gap-1">
@@ -978,7 +954,7 @@ export default function App() {
                                               <span className={`text-xs ${priorityColors[task.priority] || 'text-gray-500'}`}>
                                                 <Flag size={12} className="inline rounded-xl" /> {task.priority}
                                               </span>
-                                            </div>
+        </div>
                                             {task.description && (
                                               <p className="text-sm text-gray-600 mb-1">{task.description}</p>
                                             )}
@@ -990,7 +966,7 @@ export default function App() {
                                                 </span>
                                               )}
                                               <span>{new Date(task.created_at).toLocaleDateString()}</span>
-                                            </div>
+      </div>
                                           </div>
                                         </div>
                                         <div className="flex flex-col gap-1">
@@ -1104,19 +1080,6 @@ export default function App() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select
-                  value={clientForm.status}
-                  onChange={(e) => setClientForm({...clientForm, status: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
-                >
-                  <option value="lead">Lead</option>
-                  <option value="prospect">Prospect</option>
-                  <option value="customer">Customer</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea
                   value={clientForm.notes}
@@ -1193,19 +1156,6 @@ export default function App() {
                   onChange={(e) => setClientForm({...clientForm, company: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select
-                  value={clientForm.status}
-                  onChange={(e) => setClientForm({...clientForm, status: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
-                >
-                  <option value="lead">Lead</option>
-                  <option value="prospect">Prospect</option>
-                  <option value="customer">Customer</option>
-                  <option value="inactive">Inactive</option>
-                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
@@ -1289,19 +1239,6 @@ export default function App() {
                   onKeyDown={(e) => e.stopPropagation()}
                   className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select
-                  value={clientForm.status}
-                  onChange={(e) => setClientForm({...clientForm, status: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
-                >
-                  <option value="lead">Lead</option>
-                  <option value="prospect">Prospect</option>
-                  <option value="customer">Client</option>
-                  <option value="inactive">Inactiv</option>
-                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>

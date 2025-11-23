@@ -22,13 +22,24 @@ CREATE TABLE IF NOT EXISTS clients (
   email TEXT,
   phone TEXT,
   company TEXT,
-  status TEXT DEFAULT 'lead' CHECK (status IN ('lead', 'prospect', 'customer', 'inactive')),
   notes TEXT,
   display_order INTEGER DEFAULT 0,
   created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Remove status column from clients table if it exists
+DO $$ 
+BEGIN
+  IF EXISTS (
+    SELECT 1 
+    FROM information_schema.columns 
+    WHERE table_name = 'clients' AND column_name = 'status'
+  ) THEN
+    ALTER TABLE clients DROP COLUMN status;
+  END IF;
+END $$;
 
 -- Create tasks table
 CREATE TABLE IF NOT EXISTS tasks (
@@ -191,7 +202,6 @@ CREATE TRIGGER update_tasks_updated_at
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_clients_created_by ON clients(created_by);
-CREATE INDEX IF NOT EXISTS idx_clients_status ON clients(status);
 CREATE INDEX IF NOT EXISTS idx_clients_display_order ON clients(display_order);
 
 -- Drop old index if it exists and create new one
