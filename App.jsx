@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Check, Trash2, Circle, Loader2 } from 'lucide-react';
-import { auth, db } from './firebase';
+import { db } from './firebase';
 import { 
   collection, 
   addDoc, 
@@ -10,42 +10,78 @@ import {
   query, 
   orderBy, 
   onSnapshot,
-  serverTimestamp 
+  serverTimestamp,
+  where
 } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
 
 export default function App() {
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState('');
   const [filter, setFilter] = useState('all'); // 'all', 'active', 'completed'
   const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userId, setUserId] = useState(null);
   const [error, setError] = useState(null);
 
-  // Check authentication state
+  // Get Telegram user ID on mount
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAuthenticated(!!user);
-      if (user) {
+    // Check if running in Telegram
+    if (window.Telegram && window.Telegram.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      
+      // Get user ID from Telegram
+      const telegramUserId = tg.initDataUnsafe?.user?.id || tg.initDataUnsafe?.user_id;
+      
+      if (telegramUserId) {
+        // Use Telegram user ID for persistence
+        setUserId(`telegram_${telegramUserId}`);
+        setLoading(false);
+      } else {
+        // Fallback: use a stored ID or generate one
+        let storedUserId = localStorage.getItem('telegram_user_id');
+        if (!storedUserId) {
+          storedUserId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          localStorage.setItem('telegram_user_id', storedUserId);
+        }
+        setUserId(storedUserId);
         setLoading(false);
       }
-    });
-
-    return () => unsubscribe();
+    } else {
+      // Not in Telegram - use localStorage fallback
+      let storedUserId = localStorage.getItem('telegram_user_id');
+      if (!storedUserId) {
+        storedUserId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        localStorage.setItem('telegram_user_id', storedUserId);
+      }
+      setUserId(storedUserId);
+      setLoading(false);
+    }
   }, []);
 
   // Load tasks from Firestore in real-time
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!userId) return;
 
     setLoading(true);
     setError(null);
 
-    // Create a query for tasks, ordered by creation date (newest first)
-    const tasksQuery = query(
-      collection(db, 'tasks'),
-      orderBy('createdAt', 'desc')
-    );
+    // Create a query for tasks filtered by userId, ordered by creation date (newest first)
+    // Note: We need to handle the case where createdAt might be null for old documents
+    let tasksQuery;
+    try {
+      tasksQuery = query(
+        collection(db, 'tasks'),
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+    } catch (error) {
+      // If orderBy fails (e.g., missing index), use a simpler query
+      console.warn('OrderBy query failed, using simple query:', error);
+      tasksQuery = query(
+        collection(db, 'tasks'),
+        where('userId', '==', userId)
+      );
+    }
 
     // Set up real-time listener
     const unsubscribe = onSnapshot(
@@ -53,11 +89,15 @@ export default function App() {
       (snapshot) => {
         const tasksData = [];
         snapshot.forEach((doc) => {
+          const data = doc.data();
           tasksData.push({
             id: doc.id,
-            ...doc.data()
+            ...data,
+            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt || Date.now())
           });
         });
+        // Sort by createdAt descending (newest first) in case orderBy didn't work
+        tasksData.sort((a, b) => b.createdAt - a.createdAt);
         setTasks(tasksData);
         setLoading(false);
       },
@@ -70,17 +110,18 @@ export default function App() {
 
     // Cleanup listener on unmount
     return () => unsubscribe();
-  }, [isAuthenticated]);
+  }, [userId]);
 
   // Add new task
   const addTask = async () => {
-    if (!newTask.trim() || !isAuthenticated) return;
+    if (!newTask.trim() || !userId) return;
 
     try {
       setError(null);
       await addDoc(collection(db, 'tasks'), {
         text: newTask.trim(),
         completed: false,
+        userId: userId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
@@ -93,7 +134,7 @@ export default function App() {
 
   // Toggle task completion
   const toggleTask = async (id) => {
-    if (!isAuthenticated) return;
+    if (!userId) return;
 
     try {
       const task = tasks.find(t => t.id === id);
@@ -112,7 +153,7 @@ export default function App() {
 
   // Delete task
   const deleteTask = async (id) => {
-    if (!isAuthenticated) return;
+    if (!userId) return;
 
     try {
       const taskRef = doc(db, 'tasks', id);
@@ -135,12 +176,12 @@ export default function App() {
   const completedCount = tasks.filter(t => t.completed).length;
 
   // Loading state
-  if (loading && !isAuthenticated) {
+  if (loading || !userId) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="animate-spin text-blue-600 mx-auto mb-4" size={32} />
-          <p className="text-gray-600">Connecting to Firebase...</p>
+          <p className="text-gray-600">Loading Task Manager...</p>
         </div>
       </div>
     );
@@ -265,12 +306,12 @@ export default function App() {
             onChange={(e) => setNewTask(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && addTask()}
             placeholder="Add a new task..."
-            disabled={!isAuthenticated || loading}
+            disabled={!userId || loading}
             className="flex-1 bg-gray-50 text-gray-900 placeholder-gray-400 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-600 focus:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <button
             onClick={addTask}
-            disabled={!newTask.trim() || !isAuthenticated || loading}
+            disabled={!newTask.trim() || !userId || loading}
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2"
           >
             <Plus size={20} />

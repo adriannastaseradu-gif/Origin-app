@@ -1,5 +1,4 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 // Your Firebase configuration
@@ -16,16 +15,8 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firebase Authentication and get a reference to the service
-const auth = getAuth(app);
-
 // Initialize Cloud Firestore and get a reference to the service
 const db = getFirestore(app);
 
-// Sign in anonymously
-signInAnonymously(auth).catch((error) => {
-  console.error('Error signing in anonymously:', error);
-});
-
-export { auth, db };
+export { db };
 
