@@ -39,6 +39,11 @@ export default function App() {
     name: '',
     color: '#6B7280'
   });
+  const [editingStatus, setEditingStatus] = useState(null);
+  const [editStatusForm, setEditStatusForm] = useState({
+    name: '',
+    color: '#6B7280'
+  });
 
   // Initialize Telegram WebApp if available
   useEffect(() => {
@@ -131,6 +136,7 @@ export default function App() {
   // Load data when user is logged in
   useEffect(() => {
     if (user) {
+      initializeDefaultStatuses();
       loadData();
       // Set up real-time subscriptions
       const clientsChannel = supabase
@@ -366,7 +372,7 @@ export default function App() {
     // Only set created_by if profile exists
     if (existingProfile) {
       taskData.created_by = user.id;
-    } else {
+          } else {
       // Try to create profile if it doesn't exist
       const { error: createError } = await supabase
         .from('profiles')
@@ -445,6 +451,19 @@ export default function App() {
       return;
     }
     
+    // Check if status name already exists
+    const { data: existing } = await supabase
+      .from('custom_statuses')
+      .select('id')
+      .eq('name', newStatusForm.name)
+      .eq('created_by', user.id)
+      .single();
+
+    if (existing) {
+      alert('Un status cu acest nume există deja!');
+      return;
+    }
+    
     const { error } = await supabase
       .from('custom_statuses')
       .insert([{
@@ -455,8 +474,43 @@ export default function App() {
 
     if (error) {
       alert('Eroare la adăugarea statusului: ' + error.message);
-    } else {
+      } else {
       setNewStatusForm({ name: '', color: '#6B7280' });
+      loadCustomStatuses();
+    }
+  };
+
+  const handleUpdateCustomStatus = async (e) => {
+    e.preventDefault();
+    if (!editingStatus) return;
+
+    // Check if new name conflicts with another status
+    const { data: existing } = await supabase
+      .from('custom_statuses')
+      .select('id')
+      .eq('name', editStatusForm.name)
+      .eq('created_by', user.id)
+      .neq('id', editingStatus.id)
+      .single();
+
+    if (existing) {
+      alert('Un status cu acest nume există deja!');
+      return;
+    }
+    
+    const { error } = await supabase
+      .from('custom_statuses')
+      .update({
+        name: editStatusForm.name,
+        color: editStatusForm.color
+      })
+      .eq('id', editingStatus.id);
+
+    if (error) {
+      alert('Eroare la actualizarea statusului: ' + error.message);
+    } else {
+      setEditingStatus(null);
+      setEditStatusForm({ name: '', color: '#6B7280' });
       loadCustomStatuses();
     }
   };
@@ -474,6 +528,14 @@ export default function App() {
     } else {
       loadCustomStatuses();
     }
+  };
+
+  const startEditStatus = (status) => {
+    setEditingStatus(status);
+    setEditStatusForm({
+      name: status.name,
+      color: status.color
+    });
   };
 
   const toggleClientExpansion = (clientId) => {
@@ -495,13 +557,43 @@ export default function App() {
 
   // Get all available statuses (default + custom)
   const getAllStatuses = () => {
+    // Only return custom statuses from database
+    return customStatuses;
+  };
+
+  // Initialize default statuses if they don't exist
+  const initializeDefaultStatuses = async () => {
+    if (!user || !user.id) return;
+
     const defaultStatuses = [
       { name: 'pending', color: '#F59E0B' },
       { name: 'in-progress', color: '#3B82F6' },
       { name: 'completed', color: '#10B981' },
       { name: 'cancelled', color: '#EF4444' }
     ];
-    return [...defaultStatuses, ...customStatuses];
+
+    for (const status of defaultStatuses) {
+      // Check if status already exists
+      const { data: existing } = await supabase
+        .from('custom_statuses')
+        .select('id')
+        .eq('name', status.name)
+        .eq('created_by', user.id)
+        .single();
+
+      if (!existing) {
+        // Create default status
+        await supabase
+          .from('custom_statuses')
+          .insert([{
+            name: status.name,
+            color: status.color,
+            created_by: user.id
+          }]);
+      }
+    }
+
+    loadCustomStatuses();
   };
 
   // Filter clients
@@ -1304,97 +1396,141 @@ export default function App() {
         </div>
       )}
 
-      {/* Manage Custom Statuses Modal */}
+      {/* Manage Statuses Modal */}
       {showManageStatuses && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Manage Custom Statuses</h2>
-              <button onClick={() => setShowManageStatuses(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="text-xl font-semibold">Gestionează Statusuri</h2>
+              <button onClick={() => { setShowManageStatuses(false); setEditingStatus(null); }} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
             </div>
             
-            <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Add New Status</h3>
-              <form onSubmit={handleAddCustomStatus} className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newStatusForm.name}
-                    onChange={(e) => setNewStatusForm({...newStatusForm, name: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
-                    placeholder="e.g., Review, On Hold"
-                  />
+            {!editingStatus ? (
+              <>
+                <div className="mb-6">
+                  <h3 className="text-sm font-medium text-gray-700 mb-3">Adaugă Status Nou</h3>
+                  <form onSubmit={handleAddCustomStatus} className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Nume Status *</label>
+                      <input
+                        type="text"
+                        required
+                        value={newStatusForm.name}
+                        onChange={(e) => setNewStatusForm({...newStatusForm, name: e.target.value})}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                        placeholder="ex: În așteptare, Blocat"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Culoare</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="color"
+                          value={newStatusForm.color}
+                          onChange={(e) => setNewStatusForm({...newStatusForm, color: e.target.value})}
+                          className="w-16 h-10 border border-gray-300 rounded-xl cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          value={newStatusForm.color}
+                          onChange={(e) => setNewStatusForm({...newStatusForm, color: e.target.value})}
+                          className="flex-1 px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                          placeholder="#6B7280"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl"
+                    >
+                      Adaugă Status
+                    </button>
+                  </form>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="color"
-                      value={newStatusForm.color}
-                      onChange={(e) => setNewStatusForm({...newStatusForm, color: e.target.value})}
-                      className="w-16 h-10 border border-gray-300 rounded-lg cursor-pointer"
-                    />
+
+                {customStatuses.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-3">Statusuri Existente</h3>
+                    <div className="space-y-2">
+                      {customStatuses.map(status => (
+                        <div key={status.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200">
+                          <div className="flex items-center gap-3">
+                            <div className="w-6 h-6 rounded-xl" style={{ backgroundColor: status.color }}></div>
+                            <span className="text-sm font-medium text-gray-900">{status.name}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => startEditStatus(status)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                              title="Editează"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteCustomStatus(status.id)}
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                              title="Șterge"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Editează Status</h3>
+                <form onSubmit={handleUpdateCustomStatus} className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nume Status *</label>
                     <input
                       type="text"
-                      value={newStatusForm.color}
-                      onChange={(e) => setNewStatusForm({...newStatusForm, color: e.target.value})}
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
-                      placeholder="#6B7280"
+                      required
+                      value={editStatusForm.name}
+                      onChange={(e) => setEditStatusForm({...editStatusForm, name: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                      placeholder="Nume status"
                     />
                   </div>
-                </div>
-                <button
-                  type="submit"
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg"
-                >
-                  Add Status
-                </button>
-              </form>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Default Statuses</h3>
-              <div className="space-y-2 mb-4">
-                {[
-                  { name: 'pending', color: '#F59E0B' },
-                  { name: 'in-progress', color: '#3B82F6' },
-                  { name: 'completed', color: '#10B981' },
-                  { name: 'cancelled', color: '#EF4444' }
-                ].map(status => (
-                  <div key={status.name} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-xl" style={{ backgroundColor: status.color }}></div>
-                      <span className="text-sm font-medium">{status.name}</span>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Culoare</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="color"
+                        value={editStatusForm.color}
+                        onChange={(e) => setEditStatusForm({...editStatusForm, color: e.target.value})}
+                        className="w-16 h-10 border border-gray-300 rounded-xl cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={editStatusForm.color}
+                        onChange={(e) => setEditStatusForm({...editStatusForm, color: e.target.value})}
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                        placeholder="#6B7280"
+                      />
                     </div>
-                    <span className="text-xs text-gray-500">Default</span>
                   </div>
-                ))}
-        </div>
-      </div>
-
-            {customStatuses.length > 0 && (
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Your Custom Statuses</h3>
-                <div className="space-y-2">
-                  {customStatuses.map(status => (
-                    <div key={status.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-xl" style={{ backgroundColor: status.color }}></div>
-                        <span className="text-sm font-medium">{status.name}</span>
-                      </div>
-                      <button
-                        onClick={() => handleDeleteCustomStatus(status.id)}
-                        className="text-red-600 hover:text-red-700 text-sm"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl"
+                    >
+                      Salvează Modificările
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setEditingStatus(null); setEditStatusForm({ name: '', color: '#6B7280' }); }}
+                      className="px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50"
+                    >
+                      Anulează
+                    </button>
+                  </div>
+                </form>
               </div>
             )}
           </div>
