@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Check, Trash2, Circle, Loader2, User, Mail, Phone, Building, Edit, X, Save, LogOut, Users, BarChart3, ListTodo, Calendar, Flag, GripVertical } from 'lucide-react';
+import { Plus, Check, Trash2, Circle, Loader2, User, Mail, Phone, Building, Edit, X, Save, LogOut, Users, BarChart3, ListTodo, Calendar, Flag, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
 import { supabase } from './supabase';
 
 export default function App() {
@@ -185,12 +185,55 @@ export default function App() {
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
+      .order('display_order', { ascending: true })
       .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error loading tasks:', error);
           } else {
       setTasks(data || []);
+    }
+  };
+
+  const handleMoveTask = async (taskId, direction) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const clientTasks = tasks.filter(t => t.client_id === task.client_id).sort((a, b) => a.display_order - b.display_order);
+    const currentIndex = clientTasks.findIndex(t => t.id === taskId);
+    
+    if (direction === 'up' && currentIndex > 0) {
+      const targetTask = clientTasks[currentIndex - 1];
+      const tempOrder = task.display_order;
+      
+      // Swap orders
+      await supabase
+        .from('tasks')
+        .update({ display_order: targetTask.display_order })
+        .eq('id', taskId);
+      
+      await supabase
+        .from('tasks')
+        .update({ display_order: tempOrder })
+        .eq('id', targetTask.id);
+      
+      loadTasks();
+    } else if (direction === 'down' && currentIndex < clientTasks.length - 1) {
+      const targetTask = clientTasks[currentIndex + 1];
+      const tempOrder = task.display_order;
+      
+      // Swap orders
+      await supabase
+        .from('tasks')
+        .update({ display_order: targetTask.display_order })
+        .eq('id', taskId);
+      
+      await supabase
+        .from('tasks')
+        .update({ display_order: tempOrder })
+        .eq('id', targetTask.id);
+      
+      loadTasks();
     }
   };
 
@@ -306,11 +349,18 @@ export default function App() {
       .eq('id', user.id)
       .single();
     
+    // Get max display_order for this client's tasks
+    const clientTasks = tasks.filter(t => t.client_id === selectedClient.id);
+    const maxOrder = clientTasks.length > 0 
+      ? Math.max(...clientTasks.map(t => t.display_order || 0))
+      : -1;
+    
     // Build task data
     const taskData = {
       ...taskForm,
       client_id: selectedClient.id,
-      due_date: taskForm.due_date || null
+      due_date: taskForm.due_date || null,
+      display_order: maxOrder + 1
     };
     
     // Only set created_by if profile exists
@@ -436,9 +486,11 @@ export default function App() {
     setExpandedClients(newExpanded);
   };
 
-  // Get tasks for a client
+  // Get tasks for a client (sorted by display_order)
   const getClientTasks = (clientId) => {
-    return tasks.filter(task => task.client_id === clientId);
+    return tasks
+      .filter(task => task.client_id === clientId)
+      .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
   };
 
   // Get all available statuses (default + custom)
@@ -631,17 +683,17 @@ export default function App() {
                 />
                 <button
                   onClick={() => setShowManageStatuses(true)}
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-full flex items-center gap-2"
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl flex items-center gap-2"
                   title="Gestionează Statusuri Personalizate"
                 >
-                  <Flag size={16} className="rounded-full" />
+                  <Flag size={16} className="rounded-xl" />
                   Statusuri
                 </button>
       <button 
                   onClick={() => setShowAddClient(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full flex items-center gap-2"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl flex items-center gap-2"
                 >
-                  <Plus size={16} className="rounded-full" />
+                  <Plus size={16} className="rounded-xl" />
                   Adaugă Client
                 </button>
               </div>
@@ -674,15 +726,15 @@ export default function App() {
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
-                                <GripVertical size={16} className="text-gray-400 cursor-move rounded-full" />
+                                <GripVertical size={16} className="text-gray-400 cursor-move rounded-xl" />
                                 <button
                                   onClick={() => toggleClientExpansion(client.id)}
-                                  className="text-gray-400 hover:text-gray-600 rounded-full"
+                                  className="text-gray-400 hover:text-gray-600 rounded-xl"
                                 >
                                   {isExpanded ? '▼' : '▶'}
                                 </button>
                                 <h3 className="font-semibold text-gray-900">{client.name}</h3>
-                                <span className={`px-2 py-1 text-xs rounded-full ${
+                                <span className={`px-2 py-1 text-xs rounded-xl ${
                                   client.status === 'lead' ? 'bg-yellow-100 text-yellow-800' :
                                   client.status === 'prospect' ? 'bg-blue-100 text-blue-800' :
                                   'bg-green-100 text-green-800'
@@ -690,7 +742,7 @@ export default function App() {
                                   {client.status}
                                 </span>
                                 {clientTasks.length > 0 && (
-                                  <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">
+                                  <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-xl">
                                     {clientTasks.length} task{clientTasks.length !== 1 ? 's' : ''}
                                   </span>
                                 )}
@@ -722,22 +774,22 @@ export default function App() {
                             <div className="flex gap-2 items-center">
                               <button
                                 onClick={() => startAddTask(client)}
-                                className="px-3 py-2 text-purple-600 hover:bg-purple-50 rounded-full transition-colors flex items-center gap-2"
+                                className="px-3 py-2 text-purple-600 hover:bg-purple-50 rounded-xl transition-colors flex items-center gap-2"
                                 title="Adaugă Sarcină"
                               >
-                                <ListTodo size={18} className="rounded-full" />
+                                <ListTodo size={18} className="rounded-xl" />
                                 <span className="text-sm font-medium">Adaugă Task</span>
                               </button>
                               <button
                                 onClick={() => startEditClient(client)}
-                                className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+                                className="p-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
                                 title="Editează"
                               >
                                 <Edit size={18} />
                               </button>
                               <button
                                 onClick={() => handleDeleteClient(client.id)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
                                 title="Șterge"
                               >
                                 <Trash2 size={18} />
@@ -751,14 +803,14 @@ export default function App() {
                           <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
                             <div className="flex items-center justify-between mb-3">
                               <h4 className="font-medium text-gray-700 flex items-center gap-2">
-                                <ListTodo size={16} className="rounded-full" />
+                                <ListTodo size={16} className="rounded-xl" />
                                 Sarcini ({clientTasks.length})
                               </h4>
       <button 
                                 onClick={() => startAddTask(client)}
-                                className="text-sm text-purple-600 hover:text-purple-700 flex items-center gap-1 px-3 py-1.5 rounded-full hover:bg-purple-50 transition-colors"
+                                className="text-sm text-purple-600 hover:text-purple-700 flex items-center gap-1 px-3 py-1.5 rounded-xl hover:bg-purple-50 transition-colors"
                               >
-                                <Plus size={14} className="rounded-full" />
+                                <Plus size={14} className="rounded-xl" />
                                 Adaugă Task
       </button>
                             </div>
@@ -767,7 +819,7 @@ export default function App() {
                               <p className="text-sm text-gray-500 text-center py-4">Nu există sarcini încă. Adaugă una mai sus!</p>
                             ) : (
                               <div className="space-y-2">
-                                {clientTasks.map(task => {
+                                {clientTasks.map((task, index) => {
                                   const status = statuses.find(s => s.name === task.status) || { name: task.status, color: '#6B7280' };
                                   const priorityColors = {
                                     low: 'text-gray-500',
@@ -776,18 +828,18 @@ export default function App() {
                                   };
                                   
     return (
-                                    <div key={task.id} className={`bg-white rounded-full p-3 border border-gray-200 ${task.completed ? 'opacity-60' : ''}`}>
+                                    <div key={task.id} className={`bg-white rounded-xl p-3 border border-gray-200 ${task.completed ? 'opacity-60' : ''}`}>
                                       <div className="flex items-start justify-between gap-2">
                                         <div className="flex items-start gap-2 flex-1">
                                           <button
                                             onClick={() => handleToggleTaskComplete(task)}
-                                            className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                                            className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-xl border-2 flex items-center justify-center transition-all ${
                                               task.completed
                                                 ? 'bg-green-600 border-green-600'
                                                 : 'border-gray-300 hover:border-green-600'
                                             }`}
                                           >
-                                            {task.completed && <Check size={12} className="text-white rounded-full" />}
+                                            {task.completed && <Check size={12} className="text-white rounded-xl" />}
                                           </button>
                                           <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -795,13 +847,13 @@ export default function App() {
                                                 {task.title}
                                               </h5>
                                               <span
-                                                className="px-2 py-0.5 text-xs rounded-full text-white"
+                                                className="px-2 py-0.5 text-xs rounded-xl text-white"
                                                 style={{ backgroundColor: status.color }}
                                               >
                                                 {status.name}
                                               </span>
                                               <span className={`text-xs ${priorityColors[task.priority] || 'text-gray-500'}`}>
-                                                <Flag size={12} className="inline rounded-full" /> {task.priority}
+                                                <Flag size={12} className="inline rounded-xl" /> {task.priority}
                                               </span>
                                             </div>
                                             {task.description && (
@@ -818,6 +870,28 @@ export default function App() {
                                             </div>
                                           </div>
                                         </div>
+                                        <div className="flex flex-col gap-1">
+                                          <button
+                                            onClick={() => handleMoveTask(task.id, 'up')}
+                                            disabled={index === 0}
+                                            className={`p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors ${
+                                              index === 0 ? 'opacity-30 cursor-not-allowed' : ''
+                                            }`}
+                                            title="Mută sus"
+                                          >
+                                            <ChevronUp size={14} />
+                                          </button>
+                                          <button
+                                            onClick={() => handleMoveTask(task.id, 'down')}
+                                            disabled={index === clientTasks.length - 1}
+                                            className={`p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors ${
+                                              index === clientTasks.length - 1 ? 'opacity-30 cursor-not-allowed' : ''
+                                            }`}
+                                            title="Mută jos"
+                                          >
+                                            <ChevronDown size={14} />
+                                          </button>
+                                        </div>
                                         <div className="flex gap-1">
                                           <button
                                             onClick={() => {
@@ -826,15 +900,15 @@ export default function App() {
                                                 handleUpdateTask({ ...task, status: newStatus });
                                               }
                                             }}
-                                            className="p-1.5 text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                                            title="Change Status"
+                                            className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+                                            title="Schimbă Status"
                                           >
                                             <Edit size={14} />
                                           </button>
                                           <button
                                             onClick={() => handleDeleteTask(task.id)}
-                                            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                                            title="Delete"
+                                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                                            title="Șterge"
                                           >
                                             <Trash2 size={14} />
       </button>
@@ -1059,7 +1133,7 @@ export default function App() {
                   value={clientForm.name}
                   onChange={(e) => setClientForm({...clientForm, name: e.target.value})}
                   onKeyDown={(e) => e.stopPropagation()}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                   autoFocus
                 />
               </div>
@@ -1070,7 +1144,7 @@ export default function App() {
                   value={clientForm.email}
                   onChange={(e) => setClientForm({...clientForm, email: e.target.value})}
                   onKeyDown={(e) => e.stopPropagation()}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
               <div>
@@ -1080,7 +1154,7 @@ export default function App() {
                   value={clientForm.phone}
                   onChange={(e) => setClientForm({...clientForm, phone: e.target.value})}
                   onKeyDown={(e) => e.stopPropagation()}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
               <div>
@@ -1090,7 +1164,7 @@ export default function App() {
                   value={clientForm.company}
                   onChange={(e) => setClientForm({...clientForm, company: e.target.value})}
                   onKeyDown={(e) => e.stopPropagation()}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
               <div>
@@ -1098,7 +1172,7 @@ export default function App() {
                 <select
                   value={clientForm.status}
                   onChange={(e) => setClientForm({...clientForm, status: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                 >
                   <option value="lead">Lead</option>
                   <option value="prospect">Prospect</option>
@@ -1119,15 +1193,15 @@ export default function App() {
               <div className="flex gap-2">
                 <button
                   type="submit"
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full flex items-center justify-center gap-2"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl flex items-center justify-center gap-2"
                 >
-                  <Save size={16} className="rounded-full" />
+                  <Save size={16} className="rounded-xl" />
                   Adaugă Client
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowAddClient(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-full hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50"
                 >
                   Anulează
                 </button>
@@ -1158,7 +1232,7 @@ export default function App() {
                   required
                   value={taskForm.title}
                   onChange={(e) => setTaskForm({...taskForm, title: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
                   placeholder="Titlul sarcinii"
                 />
               </div>
@@ -1177,7 +1251,7 @@ export default function App() {
                 <select
                   value={taskForm.status}
                   onChange={(e) => setTaskForm({...taskForm, status: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
                 >
                   {getAllStatuses().map(status => (
                     <option key={status.name} value={status.name}>{status.name}</option>
@@ -1189,7 +1263,7 @@ export default function App() {
                 <select
                   value={taskForm.priority}
                   onChange={(e) => setTaskForm({...taskForm, priority: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
                 >
                   <option value="low">Scăzută</option>
                   <option value="medium">Medie</option>
@@ -1199,12 +1273,12 @@ export default function App() {
               <div className="relative">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Data Finalizării</label>
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 rounded-full" size={18} />
+                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 rounded-xl" size={18} />
                   <input
                     type="datetime-local"
                     value={taskForm.due_date}
                     onChange={(e) => setTaskForm({...taskForm, due_date: e.target.value})}
-                    className="w-full pl-11 pr-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                    className="w-full pl-11 pr-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-1">Selectează data și ora pentru finalizarea sarcinii</p>
@@ -1214,13 +1288,13 @@ export default function App() {
                   type="submit"
                   className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2"
                 >
-                  <Save size={16} className="rounded-full" />
+                  <Save size={16} className="rounded-xl" />
                   Adaugă Sarcină
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowAddTask(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-full hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50"
                 >
                   Anulează
                 </button>
@@ -1293,7 +1367,7 @@ export default function App() {
                 ].map(status => (
                   <div key={status.name} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: status.color }}></div>
+                      <div className="w-4 h-4 rounded-xl" style={{ backgroundColor: status.color }}></div>
                       <span className="text-sm font-medium">{status.name}</span>
                     </div>
                     <span className="text-xs text-gray-500">Default</span>
@@ -1309,7 +1383,7 @@ export default function App() {
                   {customStatuses.map(status => (
                     <div key={status.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
                       <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: status.color }}></div>
+                        <div className="w-4 h-4 rounded-xl" style={{ backgroundColor: status.color }}></div>
                         <span className="text-sm font-medium">{status.name}</span>
                       </div>
                       <button

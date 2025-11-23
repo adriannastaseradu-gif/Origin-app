@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
   due_date TIMESTAMP WITH TIME ZONE,
   completed BOOLEAN DEFAULT FALSE,
+  display_order INTEGER DEFAULT 0,
   created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -177,4 +178,27 @@ DROP INDEX IF EXISTS idx_tasks_contact_id;
 CREATE INDEX IF NOT EXISTS idx_tasks_client_id ON tasks(client_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by);
+
+-- Add display_order column to tasks table if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM information_schema.columns 
+    WHERE table_name = 'tasks' AND column_name = 'display_order'
+  ) THEN
+    ALTER TABLE tasks ADD COLUMN display_order INTEGER DEFAULT 0;
+    -- Set initial display_order based on created_at using subquery
+    UPDATE tasks 
+    SET display_order = sub.row_num - 1
+    FROM (
+      SELECT id, ROW_NUMBER() OVER (PARTITION BY client_id ORDER BY created_at) as row_num
+      FROM tasks
+    ) AS sub
+    WHERE tasks.id = sub.id;
+  END IF;
+END $$;
+
+-- Create index for display_order after column is added
+CREATE INDEX IF NOT EXISTS idx_tasks_display_order ON tasks(display_order);
 CREATE INDEX IF NOT EXISTS idx_custom_statuses_created_by ON custom_statuses(created_by);
