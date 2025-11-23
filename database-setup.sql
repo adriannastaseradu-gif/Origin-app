@@ -133,6 +133,27 @@ CREATE TABLE IF NOT EXISTS custom_statuses (
   UNIQUE(name, created_by)
 );
 
+-- Ensure created_by can be NULL (in case profile doesn't exist)
+ALTER TABLE custom_statuses ALTER COLUMN created_by DROP NOT NULL;
+
+-- Fix foreign key constraint if it exists with wrong settings
+DO $$
+BEGIN
+  -- Drop existing constraint if it doesn't allow NULL
+  IF EXISTS (
+    SELECT 1 
+    FROM information_schema.table_constraints 
+    WHERE constraint_name = 'custom_statuses_created_by_fkey' AND table_name = 'custom_statuses'
+  ) THEN
+    ALTER TABLE custom_statuses DROP CONSTRAINT custom_statuses_created_by_fkey;
+  END IF;
+END $$;
+
+-- Recreate constraint with proper settings
+ALTER TABLE custom_statuses 
+ADD CONSTRAINT custom_statuses_created_by_fkey 
+FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL;
+
 -- Disable Row Level Security (we're using Telegram auth, not Supabase auth)
 ALTER TABLE clients DISABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks DISABLE ROW LEVEL SECURITY;

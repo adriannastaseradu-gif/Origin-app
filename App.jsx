@@ -464,17 +464,48 @@ export default function App() {
       return;
     }
     
+    // Check if user exists in profiles table
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', user.id)
+      .single();
+    
+    // Build status data
+    const statusData = {
+      name: newStatusForm.name,
+      color: newStatusForm.color
+    };
+    
+    // Only set created_by if profile exists
+    if (existingProfile) {
+      statusData.created_by = user.id;
+    } else {
+      // Try to create profile if it doesn't exist
+      const { error: createError } = await supabase
+        .from('profiles')
+        .insert([{
+          id: user.id,
+          telegram_id: user.telegram_id,
+          telegram_username: user.telegram_username,
+          first_name: user.first_name,
+          last_name: user.last_name
+        }]);
+      
+      if (!createError) {
+        // Profile was created successfully, now we can set created_by
+        statusData.created_by = user.id;
+      }
+      // If profile creation failed, created_by will be NULL (which is allowed)
+    }
+    
     const { error } = await supabase
       .from('custom_statuses')
-      .insert([{
-        name: newStatusForm.name,
-        color: newStatusForm.color,
-        created_by: user.id
-      }]);
+      .insert([statusData]);
 
     if (error) {
       alert('Eroare la adăugarea statusului: ' + error.message);
-      } else {
+    } else {
       setNewStatusForm({ name: '', color: '#6B7280' });
       loadCustomStatuses();
     }
