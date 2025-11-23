@@ -144,53 +144,64 @@ export default function App() {
     }
   };
 
-  // Delete default task statuses
+  // Delete all default task statuses permanently
   const deleteDefaultTaskStatuses = async () => {
-    if (!user || !user.id) return;
-
-    const defaultStatusNames = ['completed', 'pending', 'in-progress', 'cancelled'];
-    
-    // Delete all default statuses regardless of who created them
-    for (const statusName of defaultStatusNames) {
-      const { error } = await supabase
+    try {
+      // Get all statuses first
+      const { data: allStatuses, error: fetchError } = await supabase
         .from('custom_statuses')
-        .delete()
-        .eq('name', statusName);
+        .select('id, name');
       
-      if (error) {
-        console.error(`Error deleting status ${statusName}:`, error);
+      if (fetchError) {
+        console.error('Error fetching statuses:', fetchError);
+        return;
       }
-    }
-    
-    // Reload statuses after deletion
-    loadCustomStatuses();
-  };
-
-  // Delete default task statuses permanently
-  const deleteDefaultTaskStatuses = async () => {
-    const defaultStatusNames = ['completed', 'pending', 'in-progress', 'cancelled'];
-    
-    // Delete all default statuses from database (case-insensitive)
-    for (const statusName of defaultStatusNames) {
-      // First find all matching statuses (case-insensitive)
-      const { data: matchingStatuses } = await supabase
-        .from('custom_statuses')
-        .select('id')
-        .ilike('name', statusName);
       
-      if (matchingStatuses && matchingStatuses.length > 0) {
-        // Delete all matching statuses
-        for (const status of matchingStatuses) {
-          const { error } = await supabase
-            .from('custom_statuses')
-            .delete()
-            .eq('id', status.id);
-          
-          if (error) {
-            console.error(`Error deleting status ${statusName}:`, error);
+      if (!allStatuses || allStatuses.length === 0) {
+        return;
+      }
+      
+      // List of all possible default status names (normalized to lowercase for comparison)
+      const defaultStatusNamesLower = [
+        'completed', 'pending', 'in-progress', 'cancelled',
+        'în așteptare', 'în proces', 'finalizat', 'anulat',
+        'în aşteptare' // variant with different diacritic
+      ];
+      
+      // Find all statuses that match default names (case-insensitive)
+      const statusesToDelete = [];
+      for (const status of allStatuses) {
+        if (!status.name) continue;
+        
+        const statusNameLower = status.name.toLowerCase().trim();
+        
+        // Check if this status matches any default name
+        for (const defaultNameLower of defaultStatusNamesLower) {
+          if (statusNameLower === defaultNameLower) {
+            statusesToDelete.push(status.id);
+            break;
           }
         }
       }
+      
+      // Delete all matching statuses in one batch
+      if (statusesToDelete.length > 0) {
+        const { error: deleteError } = await supabase
+          .from('custom_statuses')
+          .delete()
+          .in('id', statusesToDelete);
+        
+        if (deleteError) {
+          console.error('Error deleting default statuses:', deleteError);
+          alert('Eroare la ștergerea statusurilor implicite: ' + deleteError.message);
+        } else {
+          console.log(`Deleted ${statusesToDelete.length} default status(es)`);
+          // Reload statuses after deletion
+          await loadCustomStatuses();
+        }
+      }
+    } catch (error) {
+      console.error('Error in deleteDefaultTaskStatuses:', error);
     }
   };
 
@@ -238,6 +249,13 @@ export default function App() {
       };
     }
   }, [user]);
+
+  // Delete default statuses when status modal opens
+  useEffect(() => {
+    if (showManageStatuses) {
+      deleteDefaultTaskStatuses();
+    }
+  }, [showManageStatuses]);
 
 
   const loadData = async () => {
@@ -1223,9 +1241,9 @@ export default function App() {
                                             <Trash2 size={14} />
       </button>
                                         </div>
+        </div>
       </div>
-    </div>
-  );
+    );
                                 })}
                               </div>
                             )}
@@ -1738,6 +1756,19 @@ export default function App() {
                 <div className="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
                   <p className="text-sm text-indigo-800 font-medium">📝 Statusuri pentru Sarcini</p>
                   <p className="text-xs text-indigo-600 mt-1">Aceste statusuri se aplică doar sarcinilor (task-urilor) din fiecare client.</p>
+                </div>
+                <div className="mb-4">
+                  <button
+                    onClick={async () => {
+                      if (confirm('Ești sigur că vrei să ștergi toate statusurile implicite? (completed, pending, in-progress, cancelled, În așteptare, În proces)')) {
+                        await deleteDefaultTaskStatuses();
+                      }
+                    }}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl flex items-center justify-center gap-2 mb-4"
+                  >
+                    <Trash2 size={16} />
+                    Șterge Toate Statusurile Implicite
+                  </button>
                 </div>
                 <div className="mb-6">
                   <h3 className="text-sm font-medium text-gray-700 mb-3">Adaugă Status Nou</h3>
