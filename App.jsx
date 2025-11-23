@@ -130,7 +130,7 @@ export default function App() {
             setUser(existingProfile);
             setLoading(false);
           }
-        } else {
+          } else {
           // Not in Telegram or no user data
           setLoading(false);
         }
@@ -144,10 +144,63 @@ export default function App() {
     }
   };
 
+  // Delete default task statuses
+  const deleteDefaultTaskStatuses = async () => {
+    if (!user || !user.id) return;
+
+    const defaultStatusNames = ['completed', 'pending', 'in-progress', 'cancelled'];
+    
+    // Delete all default statuses regardless of who created them
+    for (const statusName of defaultStatusNames) {
+      const { error } = await supabase
+        .from('custom_statuses')
+        .delete()
+        .eq('name', statusName);
+      
+      if (error) {
+        console.error(`Error deleting status ${statusName}:`, error);
+      }
+    }
+    
+    // Reload statuses after deletion
+    loadCustomStatuses();
+  };
+
+  // Delete default task statuses permanently
+  const deleteDefaultTaskStatuses = async () => {
+    const defaultStatusNames = ['completed', 'pending', 'in-progress', 'cancelled'];
+    
+    // Delete all default statuses from database (case-insensitive)
+    for (const statusName of defaultStatusNames) {
+      // First find all matching statuses (case-insensitive)
+      const { data: matchingStatuses } = await supabase
+        .from('custom_statuses')
+        .select('id')
+        .ilike('name', statusName);
+      
+      if (matchingStatuses && matchingStatuses.length > 0) {
+        // Delete all matching statuses
+        for (const status of matchingStatuses) {
+          const { error } = await supabase
+            .from('custom_statuses')
+            .delete()
+            .eq('id', status.id);
+          
+          if (error) {
+            console.error(`Error deleting status ${statusName}:`, error);
+          }
+        }
+      }
+    }
+  };
+
   // Load data when user is logged in
   useEffect(() => {
     if (user) {
-      loadData();
+      // Delete default task statuses on first load
+      deleteDefaultTaskStatuses().then(() => {
+        loadData();
+      });
       // Set up real-time subscriptions
       const clientsChannel = supabase
         .channel('clients-changes')
@@ -200,7 +253,7 @@ export default function App() {
 
     if (error) {
       console.error('Eroare la încărcarea proiectelor:', error);
-          } else {
+      } else {
       setClients(data || []);
     }
   };
@@ -669,12 +722,11 @@ export default function App() {
     e.preventDefault();
     if (!editingClientStatus) return;
 
-    // Check if new name conflicts with another status
+    // Check if new name conflicts with another status (check all statuses, not just user's)
     const { data: existing } = await supabase
       .from('client_statuses')
       .select('id')
       .eq('name', editClientStatusForm.name)
-      .eq('created_by', user.id)
       .neq('id', editingClientStatus.id)
       .single();
 
