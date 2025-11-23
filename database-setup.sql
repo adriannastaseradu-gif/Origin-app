@@ -1,6 +1,39 @@
 -- Supabase CRM Database Setup
 -- Run this in Supabase SQL Editor (Dashboard → SQL Editor → New Query)
 
+-- Create profiles table for Telegram users
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  telegram_id BIGINT UNIQUE NOT NULL,
+  telegram_username TEXT,
+  first_name TEXT,
+  last_name TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Disable Row Level Security (we're using Telegram auth, not Supabase auth)
+ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Allow users to read all profiles" ON profiles;
+DROP POLICY IF EXISTS "Allow users to insert own profile" ON profiles;
+DROP POLICY IF EXISTS "Allow users to update own profile" ON profiles;
+
+-- Create policies for profiles (allow all for now, since we're using Telegram auth)
+CREATE POLICY "Allow users to read all profiles"
+  ON profiles FOR SELECT
+  USING (true);
+
+CREATE POLICY "Allow users to insert own profile"
+  ON profiles FOR INSERT
+  WITH CHECK (true);
+
+CREATE POLICY "Allow users to update own profile"
+  ON profiles FOR UPDATE
+  USING (true)
+  WITH CHECK (true);
+
 -- Create contacts table
 CREATE TABLE IF NOT EXISTS contacts (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -10,10 +43,17 @@ CREATE TABLE IF NOT EXISTS contacts (
   company TEXT,
   status TEXT DEFAULT 'lead' CHECK (status IN ('lead', 'prospect', 'customer', 'inactive')),
   notes TEXT,
-  created_by UUID REFERENCES auth.users(id),
+  created_by UUID REFERENCES profiles(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Create trigger to auto-update profiles updated_at
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
+CREATE TRIGGER update_profiles_updated_at
+  BEFORE UPDATE ON profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
 
 -- Create activities table
 CREATE TABLE IF NOT EXISTS activities (
@@ -21,13 +61,13 @@ CREATE TABLE IF NOT EXISTS activities (
   contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
   type TEXT NOT NULL CHECK (type IN ('call', 'email', 'meeting', 'note')),
   description TEXT NOT NULL,
-  user_id UUID REFERENCES auth.users(id),
+  user_id UUID REFERENCES profiles(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Enable Row Level Security
-ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE activities ENABLE ROW LEVEL SECURITY;
+-- Disable Row Level Security (we're using Telegram auth, not Supabase auth)
+ALTER TABLE contacts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE activities DISABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies if they exist (to avoid errors)
 DROP POLICY IF EXISTS "Allow authenticated users to read contacts" ON contacts;
@@ -35,30 +75,29 @@ DROP POLICY IF EXISTS "Allow authenticated users to insert contacts" ON contacts
 DROP POLICY IF EXISTS "Allow authenticated users to update contacts" ON contacts;
 DROP POLICY IF EXISTS "Allow authenticated users to delete contacts" ON contacts;
 
--- Create policies for contacts
--- Allow authenticated users to read all contacts
-CREATE POLICY "Allow authenticated users to read contacts"
+-- Update policies to allow public access (since we're using Telegram auth)
+-- Drop existing policies for contacts
+DROP POLICY IF EXISTS "Allow authenticated users to read contacts" ON contacts;
+DROP POLICY IF EXISTS "Allow authenticated users to insert contacts" ON contacts;
+DROP POLICY IF EXISTS "Allow authenticated users to update contacts" ON contacts;
+DROP POLICY IF EXISTS "Allow authenticated users to delete contacts" ON contacts;
+
+-- Create policies for contacts (allow all for now, since we're using Telegram auth)
+CREATE POLICY "Allow users to read contacts"
   ON contacts FOR SELECT
-  TO authenticated
   USING (true);
 
--- Allow authenticated users to insert contacts
-CREATE POLICY "Allow authenticated users to insert contacts"
+CREATE POLICY "Allow users to insert contacts"
   ON contacts FOR INSERT
-  TO authenticated
   WITH CHECK (true);
 
--- Allow authenticated users to update contacts
-CREATE POLICY "Allow authenticated users to update contacts"
+CREATE POLICY "Allow users to update contacts"
   ON contacts FOR UPDATE
-  TO authenticated
   USING (true)
   WITH CHECK (true);
 
--- Allow authenticated users to delete contacts
-CREATE POLICY "Allow authenticated users to delete contacts"
+CREATE POLICY "Allow users to delete contacts"
   ON contacts FOR DELETE
-  TO authenticated
   USING (true);
 
 -- Drop existing policies if they exist
@@ -67,30 +106,28 @@ DROP POLICY IF EXISTS "Allow authenticated users to insert activities" ON activi
 DROP POLICY IF EXISTS "Allow authenticated users to update activities" ON activities;
 DROP POLICY IF EXISTS "Allow authenticated users to delete activities" ON activities;
 
--- Create policies for activities
--- Allow authenticated users to read all activities
-CREATE POLICY "Allow authenticated users to read activities"
+-- Drop existing policies for activities
+DROP POLICY IF EXISTS "Allow authenticated users to read activities" ON activities;
+DROP POLICY IF EXISTS "Allow authenticated users to insert activities" ON activities;
+DROP POLICY IF EXISTS "Allow authenticated users to update activities" ON activities;
+DROP POLICY IF EXISTS "Allow authenticated users to delete activities" ON activities;
+
+-- Create policies for activities (allow all for now, since we're using Telegram auth)
+CREATE POLICY "Allow users to read activities"
   ON activities FOR SELECT
-  TO authenticated
   USING (true);
 
--- Allow authenticated users to insert activities
-CREATE POLICY "Allow authenticated users to insert activities"
+CREATE POLICY "Allow users to insert activities"
   ON activities FOR INSERT
-  TO authenticated
   WITH CHECK (true);
 
--- Allow authenticated users to update activities
-CREATE POLICY "Allow authenticated users to update activities"
+CREATE POLICY "Allow users to update activities"
   ON activities FOR UPDATE
-  TO authenticated
   USING (true)
   WITH CHECK (true);
 
--- Allow authenticated users to delete activities
-CREATE POLICY "Allow authenticated users to delete activities"
+CREATE POLICY "Allow users to delete activities"
   ON activities FOR DELETE
-  TO authenticated
   USING (true);
 
 -- Create function to update updated_at timestamp
@@ -121,7 +158,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
   due_date TIMESTAMP WITH TIME ZONE,
   completed BOOLEAN DEFAULT FALSE,
-  created_by UUID REFERENCES auth.users(id),
+  created_by UUID REFERENCES profiles(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -131,14 +168,14 @@ CREATE TABLE IF NOT EXISTS custom_statuses (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name TEXT NOT NULL,
   color TEXT DEFAULT '#6B7280',
-  created_by UUID REFERENCES auth.users(id),
+  created_by UUID REFERENCES profiles(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(name, created_by)
 );
 
--- Enable Row Level Security for tasks
-ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE custom_statuses ENABLE ROW LEVEL SECURITY;
+-- Disable Row Level Security (we're using Telegram auth, not Supabase auth)
+ALTER TABLE tasks DISABLE ROW LEVEL SECURITY;
+ALTER TABLE custom_statuses DISABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies if they exist
 DROP POLICY IF EXISTS "Allow authenticated users to read tasks" ON tasks;
@@ -174,26 +211,28 @@ DROP POLICY IF EXISTS "Allow authenticated users to insert custom statuses" ON c
 DROP POLICY IF EXISTS "Allow authenticated users to update custom statuses" ON custom_statuses;
 DROP POLICY IF EXISTS "Allow authenticated users to delete custom statuses" ON custom_statuses;
 
--- Create policies for custom_statuses
-CREATE POLICY "Allow authenticated users to read custom statuses"
+-- Drop existing policies for custom_statuses
+DROP POLICY IF EXISTS "Allow authenticated users to read custom statuses" ON custom_statuses;
+DROP POLICY IF EXISTS "Allow authenticated users to insert custom statuses" ON custom_statuses;
+DROP POLICY IF EXISTS "Allow authenticated users to update custom statuses" ON custom_statuses;
+DROP POLICY IF EXISTS "Allow authenticated users to delete custom statuses" ON custom_statuses;
+
+-- Create policies for custom_statuses (allow all for now, since we're using Telegram auth)
+CREATE POLICY "Allow users to read custom statuses"
   ON custom_statuses FOR SELECT
-  TO authenticated
   USING (true);
 
-CREATE POLICY "Allow authenticated users to insert custom statuses"
+CREATE POLICY "Allow users to insert custom statuses"
   ON custom_statuses FOR INSERT
-  TO authenticated
   WITH CHECK (true);
 
-CREATE POLICY "Allow authenticated users to update custom statuses"
+CREATE POLICY "Allow users to update custom statuses"
   ON custom_statuses FOR UPDATE
-  TO authenticated
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY "Allow authenticated users to delete custom statuses"
+CREATE POLICY "Allow users to delete custom statuses"
   ON custom_statuses FOR DELETE
-  TO authenticated
   USING (true);
 
 -- Drop existing trigger if it exists

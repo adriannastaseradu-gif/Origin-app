@@ -59,16 +59,81 @@ export default function App() {
     }
   }, []);
 
-  // Check if user is logged in
+  // Authenticate with Telegram
   useEffect(() => {
-    checkUser();
-    supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadData();
-      }
-    });
+    authenticateWithTelegram();
   }, []);
+
+  const authenticateWithTelegram = async () => {
+    setLoading(true);
+    
+    // Check if running in Telegram
+    if (window.Telegram && window.Telegram.WebApp) {
+      try {
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        
+        const telegramUser = tg.initDataUnsafe?.user;
+        
+        if (telegramUser && telegramUser.id) {
+          // Find or create user profile
+          const { data: existingProfile, error: findError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('telegram_id', telegramUser.id)
+            .single();
+
+          if (findError && findError.code === 'PGRST116') {
+            // User doesn't exist, create new profile
+            const { data: newProfile, error: createError } = await supabase
+              .from('profiles')
+              .insert([{
+                telegram_id: telegramUser.id,
+                telegram_username: telegramUser.username || null,
+                first_name: telegramUser.first_name || null,
+                last_name: telegramUser.last_name || null
+              }])
+              .select()
+              .single();
+
+            if (createError) {
+              console.error('Error creating profile:', createError);
+        setLoading(false);
+        return;
+      }
+      
+            setUser(newProfile);
+            setLoading(false);
+          } else if (findError) {
+            console.error('Error finding profile:', findError);
+            setLoading(false);
+          } else {
+            // Update profile with latest Telegram info
+            await supabase
+              .from('profiles')
+              .update({
+                telegram_username: telegramUser.username || existingProfile.telegram_username,
+                first_name: telegramUser.first_name || existingProfile.first_name,
+                last_name: telegramUser.last_name || existingProfile.last_name
+              })
+              .eq('id', existingProfile.id);
+
+            setUser(existingProfile);
+            setLoading(false);
+          }
+        } else {
+          // Not in Telegram or no user data
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Error authenticating with Telegram:', error);
+        setLoading(false);
+      }
+    } else {
+      // Not in Telegram - show message
+      setLoading(false);
+    }
+  };
 
   // Load data when user is logged in
   useEffect(() => {
@@ -96,11 +161,6 @@ export default function App() {
     }
   }, [user]);
 
-  const checkUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    setUser(session?.user ?? null);
-    setLoading(false);
-  };
 
   const loadData = async () => {
     await Promise.all([loadContacts(), loadActivities(), loadTasks(), loadCustomStatuses()]);
@@ -114,7 +174,7 @@ export default function App() {
 
     if (error) {
       console.error('Error loading contacts:', error);
-    } else {
+          } else {
       setContacts(data || []);
     }
   };
@@ -124,8 +184,7 @@ export default function App() {
       .from('activities')
       .select(`
         *,
-        contacts(name),
-        profiles:user_id(email)
+        contacts(name)
       `)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -145,7 +204,7 @@ export default function App() {
 
     if (error) {
       console.error('Error loading tasks:', error);
-    } else {
+          } else {
       setTasks(data || []);
     }
   };
@@ -163,45 +222,9 @@ export default function App() {
     }
   };
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const email = formData.get('email');
-    const password = formData.get('password');
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      alert('Login failed: ' + error.message);
-    } else {
-      setUser(data.user);
-    }
-  };
-
-  const handleSignUp = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const email = formData.get('email');
-    const password = formData.get('password');
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (error) {
-      alert('Sign up failed: ' + error.message);
-    } else {
-      alert('Account created! Please check your email to verify your account.');
-    }
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
     setUser(null);
+    // Clear any stored data if needed
   };
 
   const handleAddContact = async (e) => {
@@ -265,7 +288,7 @@ export default function App() {
 
     if (error) {
       alert('Error adding activity: ' + error.message);
-    } else {
+      } else {
       setShowAddActivity(false);
       setActivityForm({ type: 'note', description: '', contact_id: null });
       setSelectedContact(null);
@@ -458,76 +481,22 @@ export default function App() {
   if (!user) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
-        <div className="max-w-md w-full">
-          <h1 className="text-3xl font-bold text-center mb-8 text-gray-900">CRM Login</h1>
-          {window.Telegram && window.Telegram.WebApp && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-sm text-blue-800 text-center">
-              📱 Running in Telegram
+        <div className="max-w-md w-full text-center">
+          <h1 className="text-3xl font-bold mb-4 text-gray-900">CRM System</h1>
+          {window.Telegram && window.Telegram.WebApp ? (
+            <div>
+              <Loader2 className="animate-spin text-blue-600 mx-auto mb-4" size={32} />
+              <p className="text-gray-600">Authenticating with Telegram...</p>
+              <p className="text-sm text-gray-500 mt-2">Please wait while we set up your account.</p>
+            </div>
+          ) : (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+              <p className="text-yellow-800 mb-2">⚠️ This app requires Telegram</p>
+              <p className="text-sm text-yellow-700">
+                Please open this app from within Telegram to use the CRM system.
+              </p>
             </div>
           )}
-          
-          <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-            <form onSubmit={handleLogin} className="space-y-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  name="email"
-                  required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
-                  placeholder="your@email.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input
-                  type="password"
-                  name="password"
-                  required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
-                  placeholder="Password"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-colors"
-              >
-                Login
-              </button>
-            </form>
-
-            <div className="text-center text-sm text-gray-500 mb-4">or</div>
-
-            <form onSubmit={handleSignUp} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email (New Account)</label>
-                <input
-                  type="email"
-                  name="email"
-                  required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
-                  placeholder="your@email.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input
-                  type="password"
-                  name="password"
-                  required
-                  minLength={6}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
-                  placeholder="Min 6 characters"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 rounded-lg transition-colors"
-              >
-                Sign Up
-              </button>
-            </form>
-          </div>
         </div>
       </div>
     );
@@ -540,7 +509,9 @@ export default function App() {
         <div className="flex items-center justify-between max-w-7xl mx-auto">
           <h1 className="text-2xl font-bold text-gray-900">CRM System</h1>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">{user.email}</span>
+            <span className="text-sm text-gray-600">
+              {user.first_name || user.telegram_username || `User ${user.telegram_id}`}
+            </span>
             <button
               onClick={handleLogout}
               className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
@@ -613,8 +584,8 @@ export default function App() {
               <div className="text-sm text-gray-600 mb-1">Customers</div>
               <div className="text-3xl font-bold text-green-600">{stats.customers}</div>
             </div>
-          </div>
-        )}
+        </div>
+      )}
 
         {view === 'contacts' && (
           <div>
@@ -670,7 +641,7 @@ export default function App() {
                   <Flag size={16} />
                   Statuses
                 </button>
-                <button
+      <button 
                   onClick={() => setShowAddContact(true)}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
                 >
@@ -772,11 +743,11 @@ export default function App() {
                                 title="Delete"
                               >
                                 <Trash2 size={18} />
-                              </button>
+      </button>
                             </div>
-                          </div>
-                        </div>
-                        
+        </div>
+      </div>
+
                         {/* Tasks Section */}
                         {isExpanded && (
                           <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
@@ -785,13 +756,13 @@ export default function App() {
                                 <ListTodo size={16} />
                                 Tasks ({contactTasks.length})
                               </h4>
-                              <button
+      <button 
                                 onClick={() => startAddTask(contact)}
                                 className="text-sm text-purple-600 hover:text-purple-700 flex items-center gap-1"
                               >
                                 <Plus size={14} />
                                 Add Task
-                              </button>
+      </button>
                             </div>
                             
                             {contactTasks.length === 0 ? (
@@ -806,7 +777,7 @@ export default function App() {
                                     high: 'text-red-600'
                                   };
                                   
-                                  return (
+    return (
                                     <div key={task.id} className={`bg-white rounded-lg p-3 border border-gray-200 ${task.completed ? 'opacity-60' : ''}`}>
                                       <div className="flex items-start justify-between gap-2">
                                         <div className="flex items-start gap-2 flex-1">
@@ -868,11 +839,11 @@ export default function App() {
                                             title="Delete"
                                           >
                                             <Trash2 size={14} />
-                                          </button>
+      </button>
                                         </div>
-                                      </div>
-                                    </div>
-                                  );
+      </div>
+    </div>
+  );
                                 })}
                               </div>
                             )}
@@ -1327,8 +1298,8 @@ export default function App() {
                     <span className="text-xs text-gray-500">Default</span>
                   </div>
                 ))}
-              </div>
-            </div>
+        </div>
+      </div>
 
             {customStatuses.length > 0 && (
               <div>
