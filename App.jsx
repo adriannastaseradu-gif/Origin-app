@@ -267,10 +267,12 @@ export default function App() {
       return;
     }
 
+    // Explicitly exclude status field
+    const { status, ...clientData } = clientForm;
     const { data, error } = await supabase
       .from('clients')
       .insert([{
-        ...clientForm,
+        ...clientData,
         created_by: user.id
       }])
       .select();
@@ -286,9 +288,11 @@ export default function App() {
 
   const handleUpdateClient = async (e) => {
     e.preventDefault();
+    // Explicitly exclude status field
+    const { status, ...clientData } = clientForm;
     const { error } = await supabase
       .from('clients')
-      .update(clientForm)
+      .update(clientData)
       .eq('id', editingClient.id);
 
     if (error) {
