@@ -45,6 +45,27 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Ensure created_by can be NULL (in case profile doesn't exist)
+ALTER TABLE tasks ALTER COLUMN created_by DROP NOT NULL;
+
+-- Fix foreign key constraint if it exists with wrong settings
+DO $$
+BEGIN
+  -- Drop existing constraint if it doesn't allow NULL
+  IF EXISTS (
+    SELECT 1 
+    FROM information_schema.table_constraints 
+    WHERE constraint_name = 'tasks_created_by_fkey' AND table_name = 'tasks'
+  ) THEN
+    ALTER TABLE tasks DROP CONSTRAINT tasks_created_by_fkey;
+  END IF;
+END $$;
+
+-- Recreate constraint with proper settings
+ALTER TABLE tasks 
+ADD CONSTRAINT tasks_created_by_fkey 
+FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL;
+
 -- Add display_order column to clients table if it doesn't exist
 DO $$ 
 BEGIN

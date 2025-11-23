@@ -262,7 +262,7 @@ export default function App() {
 
     if (error) {
       alert('Eroare la ștergerea clientului: ' + error.message);
-      } else {
+          } else {
       loadClients();
     }
   };
@@ -299,26 +299,45 @@ export default function App() {
       return;
     }
     
-    // Ensure user exists in profiles table
-    const { data: profileCheck } = await supabase
+    // Ensure user exists in profiles table, if not, create it
+    const { data: existingProfile } = await supabase
       .from('profiles')
       .select('id')
       .eq('id', user.id)
       .single();
     
-    if (!profileCheck) {
-      alert('Eroare: Profilul utilizatorului nu există. Te rugăm să reîncarci aplicația.');
-      return;
+    // Build task data
+    const taskData = {
+      ...taskForm,
+      client_id: selectedClient.id,
+      due_date: taskForm.due_date || null
+    };
+    
+    // Only set created_by if profile exists
+    if (existingProfile) {
+      taskData.created_by = user.id;
+    } else {
+      // Try to create profile if it doesn't exist
+      const { error: createError } = await supabase
+        .from('profiles')
+        .insert([{
+          id: user.id,
+          telegram_id: user.telegram_id,
+          telegram_username: user.telegram_username,
+          first_name: user.first_name,
+          last_name: user.last_name
+        }]);
+      
+      if (!createError) {
+        // Profile was created successfully, now we can set created_by
+        taskData.created_by = user.id;
+      }
+      // If profile creation failed, created_by will be NULL (which is allowed)
     }
     
     const { error } = await supabase
       .from('tasks')
-      .insert([{
-        ...taskForm,
-        client_id: selectedClient.id,
-        created_by: user.id,
-        due_date: taskForm.due_date || null
-      }]);
+      .insert([taskData]);
 
     if (error) {
       alert('Eroare la adăugarea sarcinii: ' + error.message);
