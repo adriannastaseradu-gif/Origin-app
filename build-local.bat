@@ -1,5 +1,5 @@
 @echo off
-echo Starting Task Manager Development Server...
+echo Building application for production...
 echo.
 
 REM Add Node.js to PATH for this session
@@ -25,14 +25,24 @@ if not exist "node_modules" (
     )
 )
 
-REM Start the development server
+REM Build the application
 echo.
-echo Starting Vite development server...
-echo Open http://localhost:5173 in your browser when ready!
+echo Building production bundle...
+call npm run build
+
+if %ERRORLEVEL% NEQ 0 (
+    echo ERROR: Build failed!
+    pause
+    exit /b 1
+)
+
 echo.
-call npm run dev
+echo Build completed successfully!
+echo Files are in the 'dist' folder.
+echo.
+echo To preview the production build, run: npm run preview
+echo.
 
 pause
-
 
 

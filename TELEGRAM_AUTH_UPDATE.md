@@ -34,3 +34,4 @@ The updated `database-setup.sql` already has policies that allow all operations.
 4. You can start using the CRM immediately!
 
 
+
