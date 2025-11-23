@@ -1,48 +1,126 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Check, Trash2, Circle } from 'lucide-react';
+import { Plus, Check, Trash2, Circle, Loader2 } from 'lucide-react';
+import { auth, db } from './firebase';
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  query, 
+  orderBy, 
+  onSnapshot,
+  serverTimestamp 
+} from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 
 export default function App() {
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState('');
   const [filter, setFilter] = useState('all'); // 'all', 'active', 'completed'
+  const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Load tasks from localStorage on mount
+  // Check authentication state
   useEffect(() => {
-    const savedTasks = localStorage.getItem('telegram-tasks');
-    if (savedTasks) {
-      setTasks(JSON.parse(savedTasks));
-    }
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAuthenticated(!!user);
+      if (user) {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  // Save tasks to localStorage whenever tasks change
+  // Load tasks from Firestore in real-time
   useEffect(() => {
-    localStorage.setItem('telegram-tasks', JSON.stringify(tasks));
-  }, [tasks]);
+    if (!isAuthenticated) return;
+
+    setLoading(true);
+    setError(null);
+
+    // Create a query for tasks, ordered by creation date (newest first)
+    const tasksQuery = query(
+      collection(db, 'tasks'),
+      orderBy('createdAt', 'desc')
+    );
+
+    // Set up real-time listener
+    const unsubscribe = onSnapshot(
+      tasksQuery,
+      (snapshot) => {
+        const tasksData = [];
+        snapshot.forEach((doc) => {
+          tasksData.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+        setTasks(tasksData);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error fetching tasks:', error);
+        setError('Failed to load tasks. Please check your Firebase configuration.');
+        setLoading(false);
+      }
+    );
+
+    // Cleanup listener on unmount
+    return () => unsubscribe();
+  }, [isAuthenticated]);
 
   // Add new task
-  const addTask = () => {
-    if (newTask.trim()) {
-      const task = {
-        id: Date.now(),
+  const addTask = async () => {
+    if (!newTask.trim() || !isAuthenticated) return;
+
+    try {
+      setError(null);
+      await addDoc(collection(db, 'tasks'), {
         text: newTask.trim(),
         completed: false,
-        createdAt: new Date().toISOString()
-      };
-      setTasks([task, ...tasks]);
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
       setNewTask('');
+    } catch (error) {
+      console.error('Error adding task:', error);
+      setError('Failed to add task. Please try again.');
     }
   };
 
   // Toggle task completion
-  const toggleTask = (id) => {
-    setTasks(tasks.map(task =>
-      task.id === id ? { ...task, completed: !task.completed } : task
-    ));
+  const toggleTask = async (id) => {
+    if (!isAuthenticated) return;
+
+    try {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+
+      const taskRef = doc(db, 'tasks', id);
+      await updateDoc(taskRef, {
+        completed: !task.completed,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error updating task:', error);
+      setError('Failed to update task. Please try again.');
+    }
   };
 
   // Delete task
-  const deleteTask = (id) => {
-    setTasks(tasks.filter(task => task.id !== id));
+  const deleteTask = async (id) => {
+    if (!isAuthenticated) return;
+
+    try {
+      const taskRef = doc(db, 'tasks', id);
+      await deleteDoc(taskRef);
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      setError('Failed to delete task. Please try again.');
+    }
   };
 
   // Filter tasks
@@ -56,6 +134,18 @@ export default function App() {
   const activeCount = tasks.filter(t => !t.completed).length;
   const completedCount = tasks.filter(t => t.completed).length;
 
+  // Loading state
+  if (loading && !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="animate-spin text-blue-600 mx-auto mb-4" size={32} />
+          <p className="text-gray-600">Connecting to Firebase...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white text-gray-900">
       {/* Header */}
@@ -64,6 +154,11 @@ export default function App() {
         <p className="text-sm text-gray-500 text-center mt-1">
           {activeCount} active, {completedCount} completed
         </p>
+        {error && (
+          <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm text-center">
+            {error}
+          </div>
+        )}
       </div>
 
       {/* Filter Tabs */}
@@ -102,7 +197,12 @@ export default function App() {
 
       {/* Task List */}
       <div className="pb-24">
-        {filteredTasks.length === 0 ? (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16 px-4">
+            <Loader2 className="animate-spin text-blue-600 mb-4" size={32} />
+            <p className="text-gray-500">Loading tasks...</p>
+          </div>
+        ) : filteredTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-4">
             <Circle size={48} className="text-gray-300 mb-4" />
             <p className="text-gray-500 text-center">
@@ -165,11 +265,12 @@ export default function App() {
             onChange={(e) => setNewTask(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && addTask()}
             placeholder="Add a new task..."
-            className="flex-1 bg-gray-50 text-gray-900 placeholder-gray-400 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-600 focus:bg-white transition-colors"
+            disabled={!isAuthenticated || loading}
+            className="flex-1 bg-gray-50 text-gray-900 placeholder-gray-400 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-600 focus:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <button
             onClick={addTask}
-            disabled={!newTask.trim()}
+            disabled={!newTask.trim() || !isAuthenticated || loading}
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2"
           >
             <Plus size={20} />
