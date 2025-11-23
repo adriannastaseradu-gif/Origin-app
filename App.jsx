@@ -22,40 +22,45 @@ export default function App() {
   const [userId, setUserId] = useState(null);
   const [error, setError] = useState(null);
 
-  // Get Telegram user ID on mount
+  // Get user ID on mount - always use localStorage for consistency
   useEffect(() => {
-    // Check if running in Telegram
-    if (window.Telegram && window.Telegram.WebApp) {
-      const tg = window.Telegram.WebApp;
-      tg.ready();
-      
-      // Get user ID from Telegram
-      const telegramUserId = tg.initDataUnsafe?.user?.id || tg.initDataUnsafe?.user_id;
-      
-      if (telegramUserId) {
-        // Use Telegram user ID for persistence
-        setUserId(`telegram_${telegramUserId}`);
-        setLoading(false);
-      } else {
-        // Fallback: use a stored ID or generate one
-        let storedUserId = localStorage.getItem('telegram_user_id');
-        if (!storedUserId) {
-          storedUserId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // First, try to get stored user ID
+    let storedUserId = localStorage.getItem('telegram_user_id');
+    
+    // If no stored ID, try to get Telegram user ID
+    if (!storedUserId && window.Telegram && window.Telegram.WebApp) {
+      try {
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        
+        // Try multiple ways to get Telegram user ID
+        const telegramUserId = 
+          tg.initDataUnsafe?.user?.id || 
+          tg.initDataUnsafe?.user_id ||
+          tg.initData?.user?.id ||
+          (tg.initData ? JSON.parse(new URLSearchParams(tg.initData).get('user') || '{}')?.id : null);
+        
+        if (telegramUserId) {
+          storedUserId = `telegram_${telegramUserId}`;
           localStorage.setItem('telegram_user_id', storedUserId);
+          console.log('Using Telegram user ID:', telegramUserId);
         }
-        setUserId(storedUserId);
-        setLoading(false);
+      } catch (error) {
+        console.warn('Error getting Telegram user ID:', error);
       }
-    } else {
-      // Not in Telegram - use localStorage fallback
-      let storedUserId = localStorage.getItem('telegram_user_id');
-      if (!storedUserId) {
-        storedUserId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        localStorage.setItem('telegram_user_id', storedUserId);
-      }
-      setUserId(storedUserId);
-      setLoading(false);
     }
+    
+    // If still no ID, generate a new one
+    if (!storedUserId) {
+      storedUserId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem('telegram_user_id', storedUserId);
+      console.log('Generated new user ID:', storedUserId);
+    }
+    
+    // Always use the stored ID for consistency
+    setUserId(storedUserId);
+    setLoading(false);
+    console.log('Current user ID:', storedUserId);
   }, []);
 
   // Load tasks from Firestore in real-time
@@ -65,23 +70,13 @@ export default function App() {
     setLoading(true);
     setError(null);
 
-    // Create a query for tasks filtered by userId, ordered by creation date (newest first)
-    // Note: We need to handle the case where createdAt might be null for old documents
-    let tasksQuery;
-    try {
-      tasksQuery = query(
-        collection(db, 'tasks'),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
-      );
-    } catch (error) {
-      // If orderBy fails (e.g., missing index), use a simpler query
-      console.warn('OrderBy query failed, using simple query:', error);
-      tasksQuery = query(
-        collection(db, 'tasks'),
-        where('userId', '==', userId)
-      );
-    }
+    // Create a query for tasks filtered by userId
+    // Start with simple query (no orderBy) to avoid index requirement
+    console.log('Setting up Firestore listener for userId:', userId);
+    const tasksQuery = query(
+      collection(db, 'tasks'),
+      where('userId', '==', userId)
+    );
 
     // Set up real-time listener
     const unsubscribe = onSnapshot(
@@ -103,7 +98,14 @@ export default function App() {
       },
       (error) => {
         console.error('Error fetching tasks:', error);
-        setError('Failed to load tasks. Please check your Firebase configuration.');
+        
+        // Check if it's an index error
+        if (error.code === 'failed-precondition') {
+          setError('Firestore index needed. Check console for link to create it.');
+          console.error('Index required. Create index for: userId (Ascending), createdAt (Descending)');
+        } else {
+          setError(`Failed to load tasks: ${error.message}. Check Firebase configuration.`);
+        }
         setLoading(false);
       }
     );
@@ -114,21 +116,27 @@ export default function App() {
 
   // Add new task
   const addTask = async () => {
-    if (!newTask.trim() || !userId) return;
+    if (!newTask.trim() || !userId) {
+      console.warn('Cannot add task: newTask=', newTask, 'userId=', userId);
+      return;
+    }
 
     try {
       setError(null);
-      await addDoc(collection(db, 'tasks'), {
+      const taskData = {
         text: newTask.trim(),
         completed: false,
         userId: userId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
-      });
+      };
+      console.log('Adding task with userId:', userId);
+      const docRef = await addDoc(collection(db, 'tasks'), taskData);
+      console.log('Task added successfully with ID:', docRef.id);
       setNewTask('');
     } catch (error) {
       console.error('Error adding task:', error);
-      setError('Failed to add task. Please try again.');
+      setError(`Failed to add task: ${error.message}. Please try again.`);
     }
   };
 
@@ -198,6 +206,12 @@ export default function App() {
         {error && (
           <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm text-center">
             {error}
+          </div>
+        )}
+        {/* Debug info - remove in production */}
+        {process.env.NODE_ENV === 'development' && userId && (
+          <div className="mt-2 text-xs text-gray-400 text-center">
+            User ID: {userId.substring(0, 20)}...
           </div>
         )}
       </div>
