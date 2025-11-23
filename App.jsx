@@ -503,7 +503,7 @@ export default function App() {
 
     if (error) {
       alert('Eroare la adăugarea statusului: ' + error.message);
-    } else {
+      } else {
       setNewStatusForm({ name: '', color: '#6B7280' });
       loadCustomStatuses();
     }
@@ -872,26 +872,11 @@ export default function App() {
                             </div>
                             <div className="flex gap-2 items-center">
                               <button
-                                onClick={() => startAddTask(client)}
-                                className="px-3 py-2 text-purple-600 hover:bg-purple-50 rounded-xl transition-colors flex items-center gap-2"
-                                title="Adaugă Sarcină"
-                              >
-                                <ListTodo size={18} className="rounded-xl" />
-                                <span className="text-sm font-medium">Adaugă Task</span>
-                              </button>
-                              <button
                                 onClick={() => startEditClient(client)}
                                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
-                                title="Editează"
+                                title="Editează Detalii Client"
                               >
                                 <Edit size={18} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteClient(client.id)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
-                                title="Șterge"
-                              >
-                                <Trash2 size={18} />
                               </button>
                             </div>
         </div>
@@ -907,11 +892,11 @@ export default function App() {
                               </h4>
       <button 
                                 onClick={() => startAddTask(client)}
-                                className="text-sm text-purple-600 hover:text-purple-700 flex items-center gap-1 px-3 py-1.5 rounded-xl hover:bg-purple-50 transition-colors"
+                                className="p-2 text-purple-600 hover:text-purple-700 rounded-xl hover:bg-purple-50 transition-colors"
+                                title="Adaugă Sarcină"
                               >
-                                <Plus size={14} className="rounded-xl" />
-                                Adaugă Task
-      </button>
+                                <Plus size={16} className="rounded-xl" />
+                              </button>
                             </div>
                             
                             {clientTasks.length === 0 ? (
@@ -1407,8 +1392,8 @@ export default function App() {
                           className="flex-1 px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
                           placeholder="#6B7280"
                         />
-                      </div>
-                    </div>
+        </div>
+      </div>
                     <button
                       type="submit"
                       className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl"
