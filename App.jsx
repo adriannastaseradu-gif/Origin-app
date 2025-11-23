@@ -8,13 +8,16 @@ export default function App() {
   const [view, setView] = useState('clients'); // 'clients', 'dashboard'
   const [clients, setClients] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [clientStatuses, setClientStatuses] = useState([]);
   const [customStatuses, setCustomStatuses] = useState([]);
   const [draggedClient, setDraggedClient] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // Filter by client status
   const [showAddClient, setShowAddClient] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [showAddTask, setShowAddTask] = useState(false);
   const [showManageStatuses, setShowManageStatuses] = useState(false);
+  const [showManageClientStatuses, setShowManageClientStatuses] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
   const [expandedClients, setExpandedClients] = useState(new Set());
 
@@ -24,7 +27,8 @@ export default function App() {
     email: '',
     phone: '',
     company: '',
-    notes: ''
+    notes: '',
+    status: ''
   });
   const [taskForm, setTaskForm] = useState({
     title: '',
@@ -38,8 +42,17 @@ export default function App() {
     name: '',
     color: '#6B7280'
   });
+  const [newClientStatusForm, setNewClientStatusForm] = useState({
+    name: '',
+    color: '#6B7280'
+  });
   const [editingStatus, setEditingStatus] = useState(null);
+  const [editingClientStatus, setEditingClientStatus] = useState(null);
   const [editStatusForm, setEditStatusForm] = useState({
+    name: '',
+    color: '#6B7280'
+  });
+  const [editClientStatusForm, setEditClientStatusForm] = useState({
     name: '',
     color: '#6B7280'
   });
@@ -136,6 +149,7 @@ export default function App() {
   useEffect(() => {
     if (user) {
       initializeDefaultStatuses();
+      initializeDefaultClientStatuses();
       loadData();
       // Set up real-time subscriptions
       const clientsChannel = supabase
@@ -152,6 +166,13 @@ export default function App() {
         })
         .subscribe();
 
+      const clientStatusesChannel = supabase
+        .channel('client-statuses-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'client_statuses' }, () => {
+          loadClientStatuses();
+        })
+        .subscribe();
+
       const statusesChannel = supabase
         .channel('statuses-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_statuses' }, () => {
@@ -162,6 +183,7 @@ export default function App() {
       return () => {
         supabase.removeChannel(clientsChannel);
         supabase.removeChannel(tasksChannel);
+        supabase.removeChannel(clientStatusesChannel);
         supabase.removeChannel(statusesChannel);
       };
     }
@@ -169,7 +191,7 @@ export default function App() {
 
 
   const loadData = async () => {
-    await Promise.all([loadClients(), loadTasks(), loadCustomStatuses()]);
+    await Promise.all([loadClients(), loadTasks(), loadClientStatuses(), loadCustomStatuses()]);
   };
 
   const loadClients = async () => {
@@ -242,6 +264,19 @@ export default function App() {
     }
   };
 
+  const loadClientStatuses = async () => {
+    const { data, error } = await supabase
+      .from('client_statuses')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error loading client statuses:', error);
+    } else {
+      setClientStatuses(data || []);
+    }
+  };
+
   const loadCustomStatuses = async () => {
     const { data, error } = await supabase
       .from('custom_statuses')
@@ -267,12 +302,10 @@ export default function App() {
       return;
     }
 
-    // Explicitly exclude status field
-    const { status, ...clientData } = clientForm;
     const { data, error } = await supabase
       .from('clients')
       .insert([{
-        ...clientData,
+        ...clientForm,
         created_by: user.id
       }])
       .select();
@@ -281,25 +314,23 @@ export default function App() {
       alert('Eroare la adăugarea clientului: ' + error.message);
       } else {
       setShowAddClient(false);
-      setClientForm({ name: '', email: '', phone: '', company: '', notes: '' });
+      setClientForm({ name: '', email: '', phone: '', company: '', notes: '', status: '' });
       loadClients();
     }
   };
 
   const handleUpdateClient = async (e) => {
     e.preventDefault();
-    // Explicitly exclude status field
-    const { status, ...clientData } = clientForm;
     const { error } = await supabase
       .from('clients')
-      .update(clientData)
+      .update(clientForm)
       .eq('id', editingClient.id);
 
     if (error) {
       alert('Eroare la actualizarea clientului: ' + error.message);
     } else {
       setEditingClient(null);
-      setClientForm({ name: '', email: '', phone: '', company: '', notes: '' });
+      setClientForm({ name: '', email: '', phone: '', company: '', notes: '', status: '' });
       loadClients();
     }
   };
@@ -326,7 +357,8 @@ export default function App() {
       email: client.email || '',
       phone: client.phone || '',
       company: client.company || '',
-      notes: client.notes || ''
+      notes: client.notes || '',
+      status: client.status || ''
     });
   };
 
@@ -571,6 +603,130 @@ export default function App() {
     });
   };
 
+  // Client Status Management Functions
+  const handleAddClientStatus = async (e) => {
+    e.preventDefault();
+    if (!user || !user.id) {
+      alert('Eroare: Utilizatorul nu este autentificat.');
+      return;
+    }
+    
+    // Check if status name already exists
+    const { data: existing } = await supabase
+      .from('client_statuses')
+      .select('id')
+      .eq('name', newClientStatusForm.name)
+      .eq('created_by', user.id)
+      .single();
+
+    if (existing) {
+      alert('Un status cu acest nume există deja!');
+      return;
+    }
+    
+    // Check if profile exists
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', user.id)
+      .single();
+    
+    // Build status data
+    const statusData = {
+      name: newClientStatusForm.name,
+      color: newClientStatusForm.color
+    };
+    
+    // Only set created_by if profile exists
+    if (existingProfile) {
+      statusData.created_by = user.id;
+    } else {
+      // Try to create profile if it doesn't exist
+      const { error: createError } = await supabase
+        .from('profiles')
+        .insert([{
+          id: user.id,
+          telegram_id: user.telegram_id || 0,
+          telegram_username: user.telegram_username || null,
+          first_name: user.first_name || null,
+          last_name: user.last_name || null
+        }]);
+      
+      if (!createError) {
+        statusData.created_by = user.id;
+      }
+    }
+    
+    const { error } = await supabase
+      .from('client_statuses')
+      .insert([statusData]);
+
+    if (error) {
+      alert('Eroare la adăugarea statusului: ' + error.message);
+    } else {
+      setNewClientStatusForm({ name: '', color: '#6B7280' });
+      loadClientStatuses();
+    }
+  };
+
+  const handleUpdateClientStatus = async (e) => {
+    e.preventDefault();
+    if (!editingClientStatus) return;
+
+    // Check if new name conflicts with another status
+    const { data: existing } = await supabase
+      .from('client_statuses')
+      .select('id')
+      .eq('name', editClientStatusForm.name)
+      .eq('created_by', user.id)
+      .neq('id', editingClientStatus.id)
+      .single();
+
+    if (existing) {
+      alert('Un status cu acest nume există deja!');
+      return;
+    }
+    
+    const { error } = await supabase
+      .from('client_statuses')
+      .update({
+        name: editClientStatusForm.name,
+        color: editClientStatusForm.color
+      })
+      .eq('id', editingClientStatus.id);
+
+    if (error) {
+      alert('Eroare la actualizarea statusului: ' + error.message);
+    } else {
+      setEditingClientStatus(null);
+      setEditClientStatusForm({ name: '', color: '#6B7280' });
+      loadClientStatuses();
+    }
+  };
+
+  const handleDeleteClientStatus = async (id) => {
+    if (!confirm('Ești sigur? Clienții care folosesc acest status vor trebui actualizați.')) return;
+
+    const { error } = await supabase
+      .from('client_statuses')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      alert('Eroare la ștergerea statusului: ' + error.message);
+    } else {
+      loadClientStatuses();
+    }
+  };
+
+  const startEditClientStatus = (status) => {
+    setEditingClientStatus(status);
+    setEditClientStatusForm({
+      name: status.name,
+      color: status.color
+    });
+  };
+
   const toggleClientExpansion = (clientId) => {
     const newExpanded = new Set(expandedClients);
     if (newExpanded.has(clientId)) {
@@ -594,6 +750,67 @@ export default function App() {
     return customStatuses;
   };
 
+  // Initialize default client statuses if they don't exist
+  const initializeDefaultClientStatuses = async () => {
+    if (!user || !user.id) return;
+
+    const defaultClientStatuses = [
+      { name: 'Lead', color: '#3B82F6' },
+      { name: 'Prospect', color: '#F59E0B' },
+      { name: 'Client', color: '#10B981' },
+      { name: 'Inactiv', color: '#6B7280' }
+    ];
+
+    for (const status of defaultClientStatuses) {
+      // Check if status already exists
+      const { data: existing } = await supabase
+        .from('client_statuses')
+        .select('id')
+        .eq('name', status.name)
+        .eq('created_by', user.id)
+        .single();
+
+      if (!existing) {
+        // Check if profile exists
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', user.id)
+          .single();
+        
+        const statusData = {
+          name: status.name,
+          color: status.color
+        };
+        
+        if (existingProfile) {
+          statusData.created_by = user.id;
+        } else {
+          // Try to create profile if it doesn't exist
+          const { error: createError } = await supabase
+            .from('profiles')
+            .insert([{
+              id: user.id,
+              telegram_id: user.telegram_id || 0,
+              telegram_username: user.telegram_username || null,
+              first_name: user.first_name || null,
+              last_name: user.last_name || null
+            }]);
+          
+          if (!createError) {
+            statusData.created_by = user.id;
+          }
+        }
+        
+        await supabase
+          .from('client_statuses')
+          .insert([statusData]);
+      }
+    }
+
+    loadClientStatuses();
+  };
+
   // Initialize default statuses if they don't exist
   const initializeDefaultStatuses = async () => {
     if (!user || !user.id) return;
@@ -615,14 +832,40 @@ export default function App() {
         .single();
 
       if (!existing) {
-        // Create default status
+        // Check if profile exists
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', user.id)
+          .single();
+        
+        const statusData = {
+          name: status.name,
+          color: status.color
+        };
+        
+        if (existingProfile) {
+          statusData.created_by = user.id;
+        } else {
+          // Try to create profile if it doesn't exist
+          const { error: createError } = await supabase
+            .from('profiles')
+            .insert([{
+              id: user.id,
+              telegram_id: user.telegram_id || 0,
+              telegram_username: user.telegram_username || null,
+              first_name: user.first_name || null,
+              last_name: user.last_name || null
+            }]);
+          
+          if (!createError) {
+            statusData.created_by = user.id;
+          }
+        }
+        
         await supabase
           .from('custom_statuses')
-          .insert([{
-            name: status.name,
-            color: status.color,
-            created_by: user.id
-          }]);
+          .insert([statusData]);
       }
     }
 
@@ -635,7 +878,8 @@ export default function App() {
       client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (client.email && client.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (client.company && client.company.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesSearch;
+    const matchesStatus = statusFilter === 'all' || !statusFilter || client.status === statusFilter || (!client.status && statusFilter === 'none');
+    return matchesSearch && matchesStatus;
   });
 
   const handleDragStart = (e, client) => {
@@ -791,23 +1035,42 @@ export default function App() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                >
+                  <option value="all">Toate Statusurile</option>
+                  <option value="none">Fără Status</option>
+                  {clientStatuses.map(status => (
+                    <option key={status.id} value={status.name}>{status.name}</option>
+                  ))}
+                </select>
                 <button
-                  onClick={() => setShowManageStatuses(true)}
+                  onClick={() => setShowManageClientStatuses(true)}
                   className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl flex items-center gap-2"
-                  title="Gestionează Statusuri Personalizate"
+                  title="Gestionează Statusuri Clienți"
                 >
                   <Flag size={16} className="rounded-xl" />
-                  Statusuri
+                  Statusuri Clienți
       </button>
-      <button 
+                <button
+                  onClick={() => setShowManageStatuses(true)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl flex items-center gap-2"
+                  title="Gestionează Statusuri Sarcini"
+                >
+                  <Flag size={16} className="rounded-xl" />
+                  Statusuri Sarcini
+                </button>
+                <button 
                   onClick={() => setShowAddClient(true)}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl flex items-center gap-2"
                 >
                   <Plus size={16} className="rounded-xl" />
                   Adaugă Client
                 </button>
-              </div>
-            </div>
+        </div>
+      </div>
 
             {/* Clients List */}
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -837,13 +1100,28 @@ export default function App() {
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
                                 <GripVertical size={16} className="text-gray-400 cursor-move rounded-xl" />
-                                <button
+      <button 
                                   onClick={() => toggleClientExpansion(client.id)}
                                   className="text-gray-400 hover:text-gray-600 rounded-xl"
                                 >
                                   {isExpanded ? '▼' : '▶'}
                                 </button>
                                 <h3 className="font-semibold text-gray-900">{client.name}</h3>
+                                {client.status && (() => {
+                                  const clientStatus = clientStatuses.find(s => s.name === client.status);
+                                  return clientStatus ? (
+                                    <span 
+                                      className="px-2 py-1 text-xs text-white rounded-xl"
+                                      style={{ backgroundColor: clientStatus.color }}
+                                    >
+                                      {client.status}
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-xl">
+                                      {client.status}
+                                    </span>
+                                  );
+                                })()}
                                 {clientTasks.length > 0 && (
                                   <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-xl">
                                     {clientTasks.length} task{clientTasks.length !== 1 ? 's' : ''}
@@ -881,9 +1159,9 @@ export default function App() {
                                 title="Editează Detalii Client"
                               >
                                 <Edit size={18} />
-                              </button>
-                            </div>
-        </div>
+      </button>
+      </div>
+    </div>
       </div>
 
                         {/* Tasks Section */}
@@ -1069,6 +1347,19 @@ export default function App() {
                 />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select
+                  value={clientForm.status || ''}
+                  onChange={(e) => setClientForm({...clientForm, status: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                >
+                  <option value="">Fără Status</option>
+                  {clientStatuses.map(status => (
+                    <option key={status.id} value={status.name}>{status.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea
                   value={clientForm.notes}
@@ -1145,6 +1436,19 @@ export default function App() {
                   onChange={(e) => setClientForm({...clientForm, company: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select
+                  value={clientForm.status || ''}
+                  onChange={(e) => setClientForm({...clientForm, status: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                >
+                  <option value="">Fără Status</option>
+                  {clientStatuses.map(status => (
+                    <option key={status.id} value={status.name}>{status.name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
@@ -1353,12 +1657,153 @@ export default function App() {
         </div>
       )}
 
+      {/* Manage Client Statuses Modal */}
+      {showManageClientStatuses && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Gestionează Statusuri Clienți</h2>
+              <button onClick={() => { setShowManageClientStatuses(false); setEditingClientStatus(null); }} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            
+            {!editingClientStatus ? (
+              <>
+                <div className="mb-6">
+                  <h3 className="text-sm font-medium text-gray-700 mb-3">Adaugă Status Nou</h3>
+                  <form onSubmit={handleAddClientStatus} className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Nume Status *</label>
+                      <input
+                        type="text"
+                        required
+                        value={newClientStatusForm.name}
+                        onChange={(e) => setNewClientStatusForm({...newClientStatusForm, name: e.target.value})}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                        placeholder="ex: Lead, Prospect, Client"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Culoare</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="color"
+                          value={newClientStatusForm.color}
+                          onChange={(e) => setNewClientStatusForm({...newClientStatusForm, color: e.target.value})}
+                          className="w-16 h-10 border border-gray-300 rounded-xl cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          value={newClientStatusForm.color}
+                          onChange={(e) => setNewClientStatusForm({...newClientStatusForm, color: e.target.value})}
+                          className="flex-1 px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                          placeholder="#6B7280"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl"
+                    >
+                      Adaugă Status
+                    </button>
+                  </form>
+                </div>
+
+                {clientStatuses.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-3">Statusuri Existente</h3>
+                    <div className="space-y-2">
+                      {clientStatuses.map(status => (
+                        <div key={status.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200">
+                          <div className="flex items-center gap-3">
+                            <div className="w-6 h-6 rounded-xl" style={{ backgroundColor: status.color }}></div>
+                            <span className="text-sm font-medium text-gray-900">{status.name}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => startEditClientStatus(status)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                              title="Editează"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteClientStatus(status.id)}
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                              title="Șterge"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Editează Status</h3>
+                <form onSubmit={handleUpdateClientStatus} className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nume Status *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editClientStatusForm.name}
+                      onChange={(e) => setEditClientStatusForm({...editClientStatusForm, name: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                      placeholder="Nume status"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Culoare</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="color"
+                        value={editClientStatusForm.color}
+                        onChange={(e) => setEditClientStatusForm({...editClientStatusForm, color: e.target.value})}
+                        className="w-16 h-10 border border-gray-300 rounded-xl cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={editClientStatusForm.color}
+                        onChange={(e) => setEditClientStatusForm({...editClientStatusForm, color: e.target.value})}
+                        className="flex-1 px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200"
+                        placeholder="#6B7280"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl"
+                    >
+                      Salvează Modificările
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setEditingClientStatus(null); setEditClientStatusForm({ name: '', color: '#6B7280' }); }}
+                      className="px-4 py-2 border border-gray-300 rounded-xl hover:bg-gray-50"
+                    >
+                      Anulează
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Manage Statuses Modal */}
       {showManageStatuses && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Gestionează Statusuri</h2>
+              <h2 className="text-xl font-semibold">Gestionează Statusuri Sarcini</h2>
               <button onClick={() => { setShowManageStatuses(false); setEditingStatus(null); }} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>

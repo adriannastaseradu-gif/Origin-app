@@ -29,15 +29,15 @@ CREATE TABLE IF NOT EXISTS clients (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Remove status column from clients table if it exists
+-- Add status column to clients table if it doesn't exist
 DO $$ 
 BEGIN
-  IF EXISTS (
+  IF NOT EXISTS (
     SELECT 1 
     FROM information_schema.columns 
     WHERE table_name = 'clients' AND column_name = 'status'
   ) THEN
-    ALTER TABLE clients DROP COLUMN status;
+    ALTER TABLE clients ADD COLUMN status TEXT;
   END IF;
 END $$;
 
@@ -134,6 +134,16 @@ BEGIN
   END IF;
 END $$;
 
+-- Create client_statuses table for user-defined client statuses
+CREATE TABLE IF NOT EXISTS client_statuses (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL,
+  color TEXT DEFAULT '#6B7280',
+  created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(name, created_by)
+);
+
 -- Create custom_statuses table for user-defined task statuses
 CREATE TABLE IF NOT EXISTS custom_statuses (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -143,6 +153,26 @@ CREATE TABLE IF NOT EXISTS custom_statuses (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(name, created_by)
 );
+
+-- Ensure created_by can be NULL for client_statuses
+ALTER TABLE client_statuses ALTER COLUMN created_by DROP NOT NULL;
+
+-- Fix foreign key constraint for client_statuses if it exists with wrong settings
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 
+    FROM information_schema.table_constraints 
+    WHERE constraint_name = 'client_statuses_created_by_fkey' AND table_name = 'client_statuses'
+  ) THEN
+    ALTER TABLE client_statuses DROP CONSTRAINT client_statuses_created_by_fkey;
+  END IF;
+END $$;
+
+-- Recreate constraint with proper settings for client_statuses
+ALTER TABLE client_statuses 
+ADD CONSTRAINT client_statuses_created_by_fkey 
+FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL;
 
 -- Ensure created_by can be NULL (in case profile doesn't exist)
 ALTER TABLE custom_statuses ALTER COLUMN created_by DROP NOT NULL;
@@ -168,6 +198,7 @@ FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL;
 -- Disable Row Level Security (we're using Telegram auth, not Supabase auth)
 ALTER TABLE clients DISABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks DISABLE ROW LEVEL SECURITY;
+ALTER TABLE client_statuses DISABLE ROW LEVEL SECURITY;
 ALTER TABLE custom_statuses DISABLE ROW LEVEL SECURITY;
 
 -- Create function to update updated_at timestamp
@@ -232,4 +263,6 @@ END $$;
 
 -- Create index for display_order after column is added
 CREATE INDEX IF NOT EXISTS idx_tasks_display_order ON tasks(display_order);
+CREATE INDEX IF NOT EXISTS idx_clients_status ON clients(status);
+CREATE INDEX IF NOT EXISTS idx_client_statuses_created_by ON client_statuses(created_by);
 CREATE INDEX IF NOT EXISTS idx_custom_statuses_created_by ON custom_statuses(created_by);
