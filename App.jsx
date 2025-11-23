@@ -5,7 +5,7 @@ import { supabase } from './supabase';
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState('clients'); // 'clients', 'dashboard'
+  const [view, setView] = useState('clients'); // 'clients', 'dashboard', 'lucru'
   const [clients, setClients] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [clientStatuses, setClientStatuses] = useState([]);
@@ -986,6 +986,17 @@ export default function App() {
               <Users size={16} className="inline mr-2" />
               Proiecte ({clients.length})
             </button>
+            <button
+              onClick={() => setView('lucru')}
+              className={`px-4 py-3 text-sm font-medium transition-colors ${
+                view === 'lucru'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <ListTodo size={16} className="inline mr-2" />
+              Lucru
+            </button>
           </div>
         </div>
       </div>
@@ -1000,6 +1011,15 @@ export default function App() {
             </div>
         </div>
       )}
+
+        {view === 'lucru' && (
+          <div>
+            <div className="bg-white rounded-lg p-6 border border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Lucru</h2>
+              <p className="text-gray-600">Workspace-ul "Lucru" este în dezvoltare.</p>
+            </div>
+          </div>
+        )}
 
         {view === 'clients' && (
           <div>
