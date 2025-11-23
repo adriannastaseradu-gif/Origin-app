@@ -21,6 +21,44 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState(null);
   const [error, setError] = useState(null);
+  const [firestoreConnected, setFirestoreConnected] = useState(false);
+
+  // Test Firestore connection
+  const testFirestoreConnection = async () => {
+    if (!userId) {
+      setError('No user ID available');
+      return;
+    }
+
+    try {
+      console.log('🧪 Testing Firestore connection...');
+      const testData = {
+        text: 'Firestore Test - ' + new Date().toLocaleTimeString(),
+        completed: false,
+        userId: userId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        isTest: true
+      };
+      
+      const docRef = await addDoc(collection(db, 'tasks'), testData);
+      console.log('✅ Firestore test successful! Document ID:', docRef.id);
+      setFirestoreConnected(true);
+      setError(null);
+      alert('✅ Firestore connection works! Check Firestore Data tab.');
+    } catch (error) {
+      console.error('❌ Firestore test failed:', error);
+      setFirestoreConnected(false);
+      
+      if (error.code === 'permission-denied') {
+        setError('❌ PERMISSION DENIED: Update Firestore Rules! Go to Firestore → Rules tab and allow read/write.');
+        alert('❌ Permission Denied!\n\nGo to Firebase Console → Firestore Database → Rules tab\n\nUpdate rules to:\n\nrules_version = \'2\';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /tasks/{taskId} {\n      allow read, write: if true;\n    }\n  }\n}\n\nThen click Publish!');
+      } else {
+        setError(`❌ Firestore error: ${error.code} - ${error.message}`);
+        alert(`Firestore Error: ${error.message}\n\nCheck console for details.`);
+      }
+    }
+  };
 
   // Get user ID on mount - always use localStorage for consistency
   useEffect(() => {
@@ -227,6 +265,15 @@ export default function App() {
             {error}
           </div>
         )}
+        {/* Test Firestore Connection Button */}
+        <div className="mt-3 flex justify-center">
+          <button
+            onClick={testFirestoreConnection}
+            className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg text-xs font-medium"
+          >
+            🧪 Test Firestore Connection
+          </button>
+        </div>
         {/* Debug info - remove in production */}
         {process.env.NODE_ENV === 'development' && userId && (
           <div className="mt-2 text-xs text-gray-400 text-center">
