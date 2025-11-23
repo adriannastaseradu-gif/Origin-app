@@ -299,6 +299,18 @@ export default function App() {
       return;
     }
     
+    // Ensure user exists in profiles table
+    const { data: profileCheck } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', user.id)
+      .single();
+    
+    if (!profileCheck) {
+      alert('Eroare: Profilul utilizatorului nu există. Te rugăm să reîncarci aplicația.');
+      return;
+    }
+    
     const { error } = await supabase
       .from('tasks')
       .insert([{
@@ -600,17 +612,17 @@ export default function App() {
                 />
                 <button
                   onClick={() => setShowManageStatuses(true)}
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-full flex items-center gap-2"
                   title="Gestionează Statusuri Personalizate"
                 >
-                  <Flag size={16} />
+                  <Flag size={16} className="rounded-full" />
                   Statusuri
                 </button>
       <button 
                   onClick={() => setShowAddClient(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full flex items-center gap-2"
                 >
-                  <Plus size={16} />
+                  <Plus size={16} className="rounded-full" />
                   Adaugă Client
                 </button>
               </div>
@@ -1027,7 +1039,9 @@ export default function App() {
                   required
                   value={clientForm.name}
                   onChange={(e) => setClientForm({...clientForm, name: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                  autoFocus
                 />
               </div>
               <div>
@@ -1036,7 +1050,8 @@ export default function App() {
                   type="email"
                   value={clientForm.email}
                   onChange={(e) => setClientForm({...clientForm, email: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
               <div>
@@ -1045,7 +1060,8 @@ export default function App() {
                   type="tel"
                   value={clientForm.phone}
                   onChange={(e) => setClientForm({...clientForm, phone: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
               <div>
@@ -1054,7 +1070,8 @@ export default function App() {
                   type="text"
                   value={clientForm.company}
                   onChange={(e) => setClientForm({...clientForm, company: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
               <div>
@@ -1062,7 +1079,7 @@ export default function App() {
                 <select
                   value={clientForm.status}
                   onChange={(e) => setClientForm({...clientForm, status: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                 >
                   <option value="lead">Lead</option>
                   <option value="prospect">Prospect</option>
@@ -1075,22 +1092,23 @@ export default function App() {
                 <textarea
                   value={clientForm.notes}
                   onChange={(e) => setClientForm({...clientForm, notes: e.target.value})}
+                  onKeyDown={(e) => e.stopPropagation()}
                   rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                 />
               </div>
               <div className="flex gap-2">
                 <button
                   type="submit"
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full flex items-center justify-center gap-2"
                 >
-                  <Save size={16} />
+                  <Save size={16} className="rounded-full" />
                   Adaugă Client
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowAddClient(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 rounded-full hover:bg-gray-50"
                 >
                   Anulează
                 </button>
